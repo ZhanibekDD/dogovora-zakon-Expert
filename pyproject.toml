@@ -1,7 +1,7 @@
 [project]
 name = "zakonexpert-bot"
 version = "0.1.0"
-description = "Telegram bot for automated legal contract generation for IP ZakonExpert"
+description = "Telegram bot for automated legal contract generation for TOO ZakonExpert"
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.15,<4.0",

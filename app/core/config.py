@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,12 +35,24 @@ class Settings(BaseSettings):
 
     contract_city: str = Field(default="г. Талдыкорган", alias="CONTRACT_CITY")
     executor_full_name: str = Field(
-        default="Индивидуальный предприниматель Кияшев Жанибек Даулетович",
+        default="Товарищество с ограниченной ответственностью «ZakonExpert»",
         alias="EXECUTOR_FULL_NAME",
     )
-    executor_brand_name: str = Field(default="ZakonExpert", alias="EXECUTOR_BRAND_NAME")
-    executor_display_name: str = Field(default="ИП ZakonExpert", alias="EXECUTOR_DISPLAY_NAME")
-    executor_iin: str = Field(default="000725500183", alias="EXECUTOR_IIN")
+    executor_brand_name: str = Field(default="ТОО «ZakonExpert»", alias="EXECUTOR_BRAND_NAME")
+    executor_display_name: str = Field(default="ТОО «ZakonExpert»", alias="EXECUTOR_DISPLAY_NAME")
+    executor_identifier_label: str = Field(default="БИН", alias="EXECUTOR_IDENTIFIER_LABEL")
+    executor_identifier: str = Field(
+        default="260740044168",
+        validation_alias=AliasChoices("EXECUTOR_IDENTIFIER", "EXECUTOR_BIN", "EXECUTOR_IIN"),
+    )
+    executor_director_name: str = Field(
+        default="Кияшев Жанибек Даулетович",
+        alias="EXECUTOR_DIRECTOR_NAME",
+    )
+    executor_signer_short_name: str = Field(
+        default="Кияшев Ж.Д.",
+        alias="EXECUTOR_SIGNER_SHORT_NAME",
+    )
     executor_address: str = Field(
         default="Республика Казахстан, г. Талдыкорган, ул. Акын Сара, 152",
         alias="EXECUTOR_ADDRESS",
@@ -49,6 +61,25 @@ class Settings(BaseSettings):
     executor_kaspi_number: str = Field(default="+7 705 876 27 95", alias="EXECUTOR_KASPI_NUMBER")
     executor_kaspi_receiver: str = Field(
         default="Кияшев Жанибек Даулетович", alias="EXECUTOR_KASPI_RECEIVER"
+    )
+    executor_payment_details: str = Field(
+        default=(
+            "банковским переводом на расчётный счёт Исполнителя либо иным согласованным "
+            "Сторонами способом"
+        ),
+        alias="EXECUTOR_PAYMENT_DETAILS",
+    )
+    executor_signature_width_mm: float = Field(
+        default=37.0,
+        alias="EXECUTOR_SIGNATURE_WIDTH_MM",
+        ge=25,
+        le=65,
+    )
+    executor_stamp_diameter_mm: float = Field(
+        default=38.0,
+        alias="EXECUTOR_STAMP_DIAMETER_MM",
+        ge=25,
+        le=50,
     )
     contract_number_start: int = Field(default=1, alias="CONTRACT_NUMBER_START")
 
@@ -75,6 +106,11 @@ class Settings(BaseSettings):
         separate, narrower allow-list from the general open-access contract flow - by
         explicit request, objection generation stays restricted to specific people."""
         return self._parse_ids(self.objection_allowed_telegram_ids)
+
+    @property
+    def executor_iin(self) -> str:
+        """Backward-compatible alias for deployments still referencing the old IP field."""
+        return self.executor_identifier
 
     @staticmethod
     def _parse_ids(raw: str) -> set[int]:

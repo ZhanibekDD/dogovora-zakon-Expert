@@ -192,9 +192,13 @@ def _build_render_context(
         executor_name=settings.executor_display_name,
         executor_full_name=settings.executor_full_name,
         executor_brand_name=settings.executor_brand_name,
-        executor_iin=settings.executor_iin,
+        executor_identifier_label=settings.executor_identifier_label,
+        executor_identifier=settings.executor_identifier,
+        executor_director_name=settings.executor_director_name,
+        executor_signer_short_name=settings.executor_signer_short_name,
         executor_phone=settings.executor_phone,
         executor_address=settings.executor_address,
+        executor_payment_details=settings.executor_payment_details,
     )
 
 

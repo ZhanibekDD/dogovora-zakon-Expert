@@ -13,12 +13,17 @@ from app.schemas.conditions import ContractConditions
 from app.schemas.edit_instruction import ContractEditInstruction
 from app.schemas.identity import IdentityExtraction
 from app.services import contract_service
+from app.services.identity_text_service import (
+    merge_identity,
+    parse_identity_from_text,
+    text_without_identity,
+)
 from app.services.openai_service import OpenAIService
 from app.utils.validators import is_valid_iin_format
 
 MISSING_FIELD_LABELS = {
-    "full_name": "ФИО клиента (не удалось распознать на удостоверении)",
-    "iin": "ИИН клиента (не удалось распознать на удостоверении)",
+    "full_name": "ФИО клиента",
+    "iin": "ИИН клиента",
     "service_type": "Какая именно услуга требуется?",
     "amount": "Стоимость услуги",
     "payment_type": "Оплата сразу или после результата?",
@@ -33,7 +38,11 @@ PAYMENT_LABELS = {
     "custom": "по договорённости",
 }
 
-_AMOUNT_RE = re.compile(r"(\d[\d\s]{2,}\d)\s*(?:тенге|тг|kzt)?", re.IGNORECASE)
+_AMOUNT_RE = re.compile(
+    r"(?<!\d)(\d{1,3}(?:[ \u00a0]\d{3})+|\d+)\s*"
+    r"(тыс(?:яч[аиу]?)?\.?|[кk]|тенге|тг|kzt)?(?!\d)",
+    re.IGNORECASE,
+)
 _PHONE_RE = re.compile(r"(\+?\d[\d \-]{8,}\d)")
 _FILENAME_FORBIDDEN_RE = re.compile(r'[\\/:*?"<>|]')
 
@@ -88,7 +97,14 @@ def build_clarification_message(missing_fields: list[str]) -> str:
     lines = ["Не хватает данных для договора:"]
     for idx, field in enumerate(missing_fields, start=1):
         lines.append(f"{idx}. {MISSING_FIELD_LABELS.get(field, field)}")
-    lines.append('\nОтветьте одним сообщением, например: "50 000 тенге, оплата после результата".')
+    if "full_name" in missing_fields or "iin" in missing_fields:
+        example = (
+            "ФИО: Иванов Иван Иванович, ИИН: 900101300123; "
+            "снятие ареста; 50 000 тенге; оплата после результата"
+        )
+    else:
+        example = "50 000 тенге, оплата после результата"
+    lines.append(f'\nОтветьте одним сообщением, например: "{example}".')
     return "\n".join(lines)
 
 
@@ -99,7 +115,7 @@ def build_success_message(
     payment_label = PAYMENT_LABELS.get(conditions.payment_type, conditions.payment_type)
     lines = [f"Готово: договор № {contract.contract_number} от {contract_date}.", ""]
     if requires_manual_review:
-        lines.insert(0, "⚠️ Проверьте ФИО и ИИН перед утверждением.\n")
+        lines.insert(0, "⚠️ Проверьте ФИО и ИИН перед отправкой клиенту.\n")
     lines += [
         f"Клиент: {client.full_name}",
         f"ИИН: {client.iin or '—'}",
@@ -138,6 +154,49 @@ async def extract_identity_and_conditions(
     return identity, conditions
 
 
+def _extract_amount_from_text(text: str) -> int | None:
+    # Remove phone-like sequences first: "+7 700 000 00 00" must never become 7,700 ₸.
+    without_phones = _PHONE_RE.sub(" ", text)
+    for match in _AMOUNT_RE.finditer(without_phones):
+        raw_digits = re.sub(r"\D", "", match.group(1))
+        suffix = (match.group(2) or "").lower()
+        # A bare 12-digit value is almost certainly an ИИН, not a service price.
+        if len(raw_digits) == 12 and not suffix:
+            continue
+        if not raw_digits:
+            continue
+        amount = int(raw_digits)
+        if suffix.startswith("тыс") or suffix in {"к", "k"}:
+            amount *= 1000
+        if amount > 0:
+            return amount
+    return None
+
+
+async def extract_identity_and_conditions_from_text(
+    openai_service: OpenAIService,
+    *,
+    text: str,
+) -> tuple[IdentityExtraction, ContractConditions]:
+    """Universal text intake: ``ФИО + ИИН`` with optional service terms in one message."""
+
+    deterministic_identity = parse_identity_from_text(text)
+    if openai_service.is_enabled:
+        ai_identity, conditions = await asyncio.gather(
+            openai_service.extract_identity_from_text(employee_text=text),
+            openai_service.extract_contract_conditions(employee_text=text),
+        )
+        # Explicit, deterministically parsed employee input is authoritative; AI only fills
+        # fields the conservative parser could not extract.
+        return merge_identity(deterministic_identity, ai_identity), conditions
+
+    conditions = _apply_manual_answer_heuristics(
+        ContractConditions(service_type=""),
+        text_without_identity(text),
+    )
+    return deterministic_identity, conditions
+
+
 def _merge_conditions(old: ContractConditions, new: ContractConditions) -> ContractConditions:
     merged = old.model_copy(deep=True)
     if new.amount_kzt:
@@ -167,11 +226,9 @@ def _merge_conditions(old: ContractConditions, new: ContractConditions) -> Contr
 def _apply_manual_answer_heuristics(conditions: ContractConditions, answer_text: str) -> ContractConditions:
     """Best-effort regex fallback used only when OPENAI_API_KEY is not configured."""
     merged = conditions.model_copy(deep=True)
-    amount_match = _AMOUNT_RE.search(answer_text)
-    if amount_match:
-        digits = re.sub(r"\D", "", amount_match.group(1))
-        if digits:
-            merged.amount_kzt = int(digits)
+    amount = _extract_amount_from_text(answer_text)
+    if amount:
+        merged.amount_kzt = amount
 
     lowered = answer_text.lower()
     if "после" in lowered:
@@ -276,6 +333,55 @@ async def process_quick_contract_message(
     )
 
 
+async def process_quick_contract_text(
+    session: AsyncSession,
+    *,
+    openai_service: OpenAIService,
+    text: str,
+    manager_id: int,
+) -> QuickContractOutcome:
+    """Create a contract from typed client identity and service terms, with no attachment."""
+
+    identity, conditions = await extract_identity_and_conditions_from_text(
+        openai_service,
+        text=text,
+    )
+    settings = get_settings()
+    missing = detect_missing_required_fields(
+        identity,
+        conditions,
+        require_phone=settings.quick_mode_require_phone,
+    )
+    requires_manual_review = identity.requires_manual_review()
+
+    if missing:
+        return QuickContractOutcome(
+            missing_fields=missing,
+            requires_manual_review=requires_manual_review,
+            pending_payload={
+                "identity": identity.model_dump(),
+                "conditions": conditions.model_dump(),
+                "manager_id": manager_id,
+            },
+        )
+
+    contract, client, docx_path, pdf_path = await generate_contract_immediately(
+        session,
+        openai_service=openai_service,
+        identity=identity,
+        conditions=conditions,
+        manager_id=manager_id,
+    )
+    return QuickContractOutcome(
+        missing_fields=[],
+        contract=contract,
+        client=client,
+        docx_path=docx_path,
+        pdf_path=pdf_path,
+        requires_manual_review=requires_manual_review,
+    )
+
+
 async def merge_clarification_answer(
     session: AsyncSession,
     *,
@@ -289,12 +395,21 @@ async def merge_clarification_answer(
     conditions = ContractConditions.model_validate(pending["conditions"])
     manager_id = pending["manager_id"]
 
+    deterministic_identity = parse_identity_from_text(answer_text)
     if openai_service.is_enabled:
         combined_text = f"{conditions.service_type}\n{answer_text}".strip()
-        refreshed = await openai_service.extract_contract_conditions(employee_text=combined_text)
+        ai_identity, refreshed = await asyncio.gather(
+            openai_service.extract_identity_from_text(employee_text=answer_text),
+            openai_service.extract_contract_conditions(employee_text=combined_text),
+        )
+        identity = merge_identity(identity, merge_identity(deterministic_identity, ai_identity))
         conditions = _merge_conditions(conditions, refreshed)
     else:
-        conditions = _apply_manual_answer_heuristics(conditions, answer_text)
+        identity = merge_identity(identity, deterministic_identity)
+        conditions = _apply_manual_answer_heuristics(
+            conditions,
+            text_without_identity(answer_text),
+        )
 
     settings = get_settings()
     missing = detect_missing_required_fields(
@@ -329,11 +444,9 @@ async def merge_clarification_answer(
 def _manual_edit_instruction_heuristics(text: str) -> ContractEditInstruction:
     """Best-effort regex fallback used only when OPENAI_API_KEY is not configured."""
     edit = ContractEditInstruction()
-    amount_match = _AMOUNT_RE.search(text)
-    if amount_match:
-        digits = re.sub(r"\D", "", amount_match.group(1))
-        if digits:
-            edit.amount_kzt = int(digits)
+    amount = _extract_amount_from_text(text)
+    if amount:
+        edit.amount_kzt = amount
 
     lowered = text.lower()
     if "после" in lowered:

@@ -26,12 +26,16 @@ def _sample_context(**overrides) -> ContractRenderContext:
         payment_terms="Оплата производится в день подписания договора.",
         work_period="в разумный срок",
         penalty_clause="Пеня 0,1% в день.",
-        executor_name="ИП ZakonExpert",
-        executor_full_name="Индивидуальный предприниматель Кияшев Жанибек Даулетович",
-        executor_brand_name="ZakonExpert",
-        executor_iin="000725500183",
+        executor_name="ТОО «ZakonExpert»",
+        executor_full_name="Товарищество с ограниченной ответственностью «ZakonExpert»",
+        executor_brand_name="ТОО «ZakonExpert»",
+        executor_identifier_label="БИН",
+        executor_identifier="260740044168",
+        executor_director_name="Кияшев Жанибек Даулетович",
+        executor_signer_short_name="Кияшев Ж.Д.",
         executor_phone="+7 705 876 27 95",
         executor_address="г. Талдыкорган, ул. Акын Сара, 152",
+        executor_payment_details="банковским переводом",
     )
     base.update(overrides)
     return ContractRenderContext(**base)
@@ -103,3 +107,7 @@ def test_executor_signature_and_stamp_embedded_only_when_requested(tmp_path: Pat
     without_sig_images = len(DocxReader(str(without_sig_path)).inline_shapes)
     assert with_sig_images >= 2  # signature + stamp
     assert without_sig_images == 0
+
+    widths_mm = sorted(shape.width / 36000 for shape in DocxReader(str(with_sig_path)).inline_shapes)
+    assert any(abs(width - 38) < 0.5 for width in widths_mm)
+    assert any(abs(width - 37) < 0.5 for width in widths_mm)

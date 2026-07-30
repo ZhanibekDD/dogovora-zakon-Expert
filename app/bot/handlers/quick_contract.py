@@ -24,6 +24,7 @@ from app.services.contract_service import (
     approve_contract_documents,
     get_or_create_active_template,
 )
+from app.services.identity_text_service import parse_identity_from_text
 from app.services.openai_service import OpenAIService
 from app.services.storage_service import UploadRejected, save_upload
 
@@ -40,12 +41,13 @@ QUICK_MODE_KEYWORDS = [
 _PRICE_LIKE_RE = re.compile(r"\d{4,}|\d+\s*[кk]\b", re.IGNORECASE)
 
 QUICK_INSTRUCTION_TEXT = (
-    "Отправьте удостоверение личности клиента и в подписи к фотографии укажите:\n"
-    "— услугу;\n"
-    "— стоимость;\n"
-    "— порядок оплаты;\n"
-    "— телефон.\n\n"
-    'Пример: "Снятие ареста от ЧСИ, 50 000 тенге, оплата после, +7 700 000 0000"'
+    "Создать договор можно любым удобным способом:\n\n"
+    "1. Отправьте фото или PDF удостоверения. Условия можно написать в подписи или "
+    "следующим сообщением.\n"
+    "2. Напишите ФИО и ИИН текстом — фото не требуется.\n"
+    "3. Укажите всё сразу одним сообщением: ФИО, ИИН, услугу, стоимость, оплату и телефон.\n\n"
+    'Пример: "ФИО: Иванов Иван Иванович, ИИН: 900101300123; снятие ареста; '
+    '50 000 тенге; оплата после результата; +7 700 000 0000"'
 )
 
 
@@ -56,6 +58,13 @@ def _looks_like_quick_contract_request(caption: str | None) -> bool:
     if any(keyword in lowered for keyword in QUICK_MODE_KEYWORDS):
         return True
     return bool(_PRICE_LIKE_RE.search(caption))
+
+
+def _looks_like_quick_text_request(text: str | None) -> bool:
+    if not text:
+        return False
+    identity = parse_identity_from_text(text)
+    return bool(identity.iin and identity.full_name)
 
 
 def _extract_file_info(message: Message) -> tuple[str, str, str]:
@@ -190,9 +199,59 @@ async def _process_document_message(message: Message, state: FSMContext, db_user
     await _send_draft_files(message, contract, client, docx_path, pdf_path)
 
 
+async def _process_text_message(message: Message, state: FSMContext, db_user: User) -> None:
+    status = await message.answer("⏳ Формирую договор...")
+    async with session_scope() as session:
+        outcome = await quick_contract_service.process_quick_contract_text(
+            session,
+            openai_service=openai_service,
+            text=message.text or "",
+            manager_id=db_user.id,
+        )
+
+        if outcome.missing_fields:
+            await message_link_service.save_pending_clarification(
+                message.chat.id,
+                outcome.pending_payload,
+            )
+            await state.set_state(QuickContractStates.waiting_for_clarification)
+            await status.edit_text(
+                quick_contract_service.build_clarification_message(outcome.missing_fields)
+            )
+            return
+
+        assert outcome.contract is not None and outcome.client is not None
+        await log_action(
+            session,
+            action="quick_draft_created_from_text",
+            user_id=db_user.id,
+            telegram_id=db_user.telegram_id,
+            entity_type="contract",
+            entity_id=outcome.contract.id,
+        )
+        contract, client = outcome.contract, outcome.client
+        text = quick_contract_service.build_success_message(
+            contract=contract,
+            client=client,
+            conditions=ContractConditions.model_validate(contract.service_data),
+            requires_manual_review=outcome.requires_manual_review,
+        )
+        docx_path, pdf_path = outcome.docx_path, outcome.pdf_path
+
+    await state.clear()
+    await status.edit_text(text, parse_mode=None)
+    assert docx_path is not None and pdf_path is not None
+    await _send_draft_files(message, contract, client, docx_path, pdf_path)
+
+
 @router.message(StateFilter(QuickContractStates.waiting_for_document), F.photo | F.document)
 async def handle_quick_document_explicit(message: Message, state: FSMContext, db_user: User) -> None:
     await _process_document_message(message, state, db_user)
+
+
+@router.message(StateFilter(QuickContractStates.waiting_for_document), F.text)
+async def handle_quick_text_explicit(message: Message, state: FSMContext, db_user: User) -> None:
+    await _process_text_message(message, state, db_user)
 
 
 @router.message(StateFilter(None), F.photo | F.document)
@@ -200,8 +259,6 @@ async def handle_quick_document_auto(
     message: Message, state: FSMContext, db_user: User, role: str | None
 ) -> None:
     if role not in EMPLOYEE_ROLES:
-        return
-    if not _looks_like_quick_contract_request(message.caption):
         return
     await _process_document_message(message, state, db_user)
 
@@ -298,6 +355,18 @@ async def handle_contract_edit_reply(message: Message, db_user: User) -> None:
 
     await status.edit_text(f"✅ Договор № {contract_number} обновлён (версия {version}).")
     await _send_draft_files(message, contract, client, docx_path, pdf_path)
+
+
+@router.message(StateFilter(None), F.text)
+async def handle_quick_text_auto(
+    message: Message,
+    state: FSMContext,
+    db_user: User,
+    role: str | None,
+) -> None:
+    if role not in EMPLOYEE_ROLES or not _looks_like_quick_text_request(message.text):
+        return
+    await _process_text_message(message, state, db_user)
 
 
 @router.callback_query(F.data.startswith("quick:hint_edit:"))

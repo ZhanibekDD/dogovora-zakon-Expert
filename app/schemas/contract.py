@@ -28,9 +28,13 @@ class ContractRenderContext(BaseModel):
     executor_name: str
     executor_full_name: str
     executor_brand_name: str
-    executor_iin: str
+    executor_identifier_label: str
+    executor_identifier: str
+    executor_director_name: str
+    executor_signer_short_name: str
     executor_phone: str
     executor_address: str
+    executor_payment_details: str
 
     executor_signature: str | None = None
     executor_stamp: str | None = None
