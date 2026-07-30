@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import subprocess
 import tempfile
@@ -69,12 +70,19 @@ def convert_docx_to_pdf(input_path: Path, output_path: Path) -> Path:
 
     with tempfile.TemporaryDirectory(prefix="zakonexpert_pdf_") as tmp_dir:
         tmp_path = Path(tmp_dir)
+        profile_path = tmp_path / "libreoffice_profile"
+        home_path = tmp_path / "home"
+        profile_path.mkdir()
+        home_path.mkdir()
+        environment = os.environ.copy()
+        environment.update({"HOME": str(home_path), "TMPDIR": str(tmp_path)})
         try:
             result = subprocess.run(
                 [
                     settings.libreoffice_path,
                     "--headless",
                     "--norestore",
+                    f"-env:UserInstallation={profile_path.resolve().as_uri()}",
                     "--convert-to",
                     "pdf",
                     "--outdir",
@@ -84,6 +92,7 @@ def convert_docx_to_pdf(input_path: Path, output_path: Path) -> Path:
                 capture_output=True,
                 timeout=CONVERT_TIMEOUT_SECONDS,
                 check=False,
+                env=environment,
             )
         except subprocess.TimeoutExpired as exc:
             logger.error("pdf_conversion_timeout", timeout=CONVERT_TIMEOUT_SECONDS)
@@ -93,7 +102,11 @@ def convert_docx_to_pdf(input_path: Path, output_path: Path) -> Path:
             raise PdfConversionError("LibreOffice (soffice) не найден в системе") from exc
 
         if result.returncode != 0:
-            logger.error("pdf_conversion_failed", returncode=result.returncode)
+            logger.error(
+                "pdf_conversion_failed",
+                returncode=result.returncode,
+                stderr=result.stderr.decode("utf-8", errors="replace")[-500:],
+            )
             raise PdfConversionError("LibreOffice завершился с ошибкой при конвертации")
 
         produced = tmp_path / f"{input_path.stem}.pdf"
@@ -120,7 +133,12 @@ def overlay_client_signature(
     the consent + canvas-drawing flow themselves - never from any bot/admin code path."""
     reader = PdfReader(str(input_pdf_path))
     writer = PdfWriter()
-    target_index = page_index if page_index >= 0 else len(reader.pages) - 1
+    anchor = _find_client_signature_anchor(input_pdf_path)
+    target_index = (
+        page_index
+        if page_index >= 0
+        else (anchor[0] if anchor is not None else len(reader.pages) - 1)
+    )
 
     for idx, page in enumerate(reader.pages):
         if idx == target_index:
@@ -129,15 +147,20 @@ def overlay_client_signature(
             buffer = io.BytesIO()
             c = canvas.Canvas(buffer, pagesize=(width, height))
             img_reader = _image_reader(signature_png_bytes)
-            sig_width, sig_height = 160, 60
-            x = width / 2 + 10
-            y = 90
+            sig_width, sig_height = 145, 52
+            if anchor is not None and idx == anchor[0]:
+                _, anchor_x, anchor_y = anchor
+                x = min(anchor_x, width - sig_width - 24)
+                y = max(34, anchor_y - sig_height - 4)
+            else:
+                x = width / 2 + 10
+                y = 90
             c.drawImage(
                 img_reader, x, y, width=sig_width, height=sig_height,
                 preserveAspectRatio=True, mask="auto",
             )
             c.setFont(_cyrillic_font_name(), 9)
-            c.drawString(x, y - 14, f"Подписано электронно: {signed_at_text}")
+            c.drawString(x, max(18, y - 13), f"Подписано электронно: {signed_at_text}")
             c.save()
             buffer.seek(0)
             overlay = PdfReader(buffer)
@@ -148,6 +171,26 @@ def overlay_client_signature(
     with open(output_pdf_path, "wb") as fh:
         writer.write(fh)
     return output_pdf_path
+
+
+def _find_client_signature_anchor(input_pdf_path: Path) -> tuple[int, float, float] | None:
+    """Locate the labelled client signature block instead of relying on page-bottom magic.
+
+    PyMuPDF coordinates start at the top-left. The returned y value is converted to the
+    bottom-left ReportLab coordinate system and points immediately below the anchor label.
+    """
+
+    import fitz
+
+    with fitz.open(str(input_pdf_path)) as document:
+        for page_index, page in enumerate(document):
+            matches = page.search_for("Подпись Клиента")
+            if not matches:
+                matches = page.search_for("Подпись клиента")
+            if matches:
+                rect = matches[0]
+                return page_index, float(rect.x0), float(page.rect.height - rect.y1)
+    return None
 
 
 def _image_reader(png_bytes: bytes):

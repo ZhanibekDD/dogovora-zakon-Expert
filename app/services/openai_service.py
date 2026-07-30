@@ -200,6 +200,29 @@ class OpenAIService:
         )
         return self.validate_identity(raw)
 
+    async def extract_identity_from_text(self, *, employee_text: str) -> IdentityExtraction:
+        """Extract only identity fields explicitly typed by an employee.
+
+        This powers the no-photo flow (``ФИО + ИИН``) and also lets a single clarification
+        repair an unreadable ID scan without asking the employee to upload it again.
+        """
+
+        raw = await self._run_structured(
+            system_prompt=IDENTITY_SYSTEM_PROMPT,
+            input_content=[
+                {
+                    "type": "input_text",
+                    "text": (
+                        "Сотрудник вручную указал реквизиты клиента. Извлеки только явно "
+                        f"написанные ФИО, ИИН и даты:\n{employee_text}"
+                    ),
+                }
+            ],
+            json_schema=IDENTITY_JSON_SCHEMA,
+            schema_name="identity_from_text",
+        )
+        return self.validate_identity(raw)
+
     async def extract_contract_conditions(self, *, employee_text: str) -> ContractConditions:
         input_content = [{"type": "input_text", "text": employee_text}]
         raw = await self._run_structured(

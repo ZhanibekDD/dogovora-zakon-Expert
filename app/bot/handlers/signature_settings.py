@@ -12,6 +12,7 @@ from app.database.models.signature import SignatureAsset
 from app.database.models.user import User
 from app.database.session import session_scope
 from app.services.audit_service import log_action
+from app.services.signature_asset_service import SignatureAssetError, prepare_signature_asset
 
 router = Router(name="signature_settings")
 
@@ -46,11 +47,18 @@ async def _store_asset(message: Message, state: FSMContext, db_user: User, *, ki
     file = await message.bot.get_file(message.document.file_id)
     buffer = await message.bot.download_file(file.file_path)
     data = buffer.read()
+    try:
+        prepared = prepare_signature_asset(data, kind=kind)
+    except SignatureAssetError as exc:
+        await message.answer(f"⛔ Не удалось подготовить изображение: {exc}.")
+        return
 
     dest = settings.signature_assets_dir / f"executor_{kind}.png"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(data)
-    digest = sha256_bytes(data)
+    temporary = dest.with_suffix(".tmp")
+    temporary.write_bytes(prepared.png_bytes)
+    temporary.replace(dest)
+    digest = sha256_bytes(prepared.png_bytes)
 
     async with session_scope() as session:
         session.add(
@@ -68,8 +76,15 @@ async def _store_asset(message: Message, state: FSMContext, db_user: User, *, ki
         await state.set_state(SignatureUploadStates.waiting_for_stamp_png)
         await message.answer(
             f"✅ Подпись сохранена (SHA-256: {digest[:16]}...).\n\n"
-            "Теперь отправьте PNG-файл печати ИП с прозрачным фоном."
+            f"Обработанный размер: {prepared.width_px}×{prepared.height_px} px; "
+            f"в договоре: {settings.executor_signature_width_mm:g} мм по ширине.\n\n"
+            "Теперь отправьте PNG-файл печати ТОО с прозрачным фоном."
         )
     else:
         await state.clear()
-        await message.answer(f"✅ Печать сохранена (SHA-256: {digest[:16]}...). Настройка завершена.")
+        await message.answer(
+            f"✅ Печать сохранена (SHA-256: {digest[:16]}...).\n"
+            f"Обработанный размер: {prepared.width_px}×{prepared.height_px} px; "
+            f"в договоре: {settings.executor_stamp_diameter_mm:g} мм.\n"
+            "Настройка завершена."
+        )

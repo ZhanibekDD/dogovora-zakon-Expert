@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
-from docx.shared import Cm
+from docx.shared import Mm
 from docxtpl import DocxTemplate, InlineImage
 
 from app.core.config import get_settings
 from app.schemas.contract import ContractRenderContext
+from app.services.signature_asset_service import (
+    SignatureAssetError,
+    prepare_signature_asset,
+)
+
+
+class ExecutorAssetsMissingError(FileNotFoundError):
+    pass
 
 
 def render_contract_docx(
@@ -34,8 +43,35 @@ def render_contract_docx(
     if include_executor_signature:
         sig_path = settings.signature_assets_dir / "executor_signature.png"
         stamp_path = settings.signature_assets_dir / "executor_stamp.png"
-        data["executor_signature"] = InlineImage(doc, str(sig_path), width=Cm(4.5))
-        data["executor_stamp"] = InlineImage(doc, str(stamp_path), width=Cm(4.0))
+        missing = [path.name for path in (sig_path, stamp_path) if not path.exists()]
+        if missing:
+            raise ExecutorAssetsMissingError(
+                "Не загружены подпись и/или печать Исполнителя. "
+                "Откройте /signature_settings и загрузите оба PNG-файла."
+            )
+        try:
+            signature = prepare_signature_asset(sig_path.read_bytes(), kind="signature")
+            stamp = prepare_signature_asset(stamp_path.read_bytes(), kind="stamp")
+        except SignatureAssetError as exc:
+            raise ExecutorAssetsMissingError(
+                f"Файл подписи или печати некорректен: {exc}. "
+                "Загрузите изображения заново через /signature_settings."
+            ) from exc
+
+        # Millimetres are deliberate physical print sizes. Pixel dimensions never influence
+        # the result, and only width is set so Word/LibreOffice cannot distort the aspect ratio.
+        signature_stream = io.BytesIO(signature.png_bytes)
+        stamp_stream = io.BytesIO(stamp.png_bytes)
+        data["executor_signature"] = InlineImage(
+            doc,
+            signature_stream,
+            width=Mm(settings.executor_signature_width_mm),
+        )
+        data["executor_stamp"] = InlineImage(
+            doc,
+            stamp_stream,
+            width=Mm(settings.executor_stamp_diameter_mm),
+        )
     else:
         data["executor_signature"] = ""
         data["executor_stamp"] = ""

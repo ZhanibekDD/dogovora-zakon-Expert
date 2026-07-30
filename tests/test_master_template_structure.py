@@ -11,6 +11,15 @@ def _load_master_template():
     return DocxReader(str(settings.templates_dir / "master_v1.docx"))
 
 
+def _table_text(table) -> str:
+    chunks: list[str] = []
+    for row in table.rows:
+        for cell in row.cells:
+            chunks.append(cell.text)
+            chunks.extend(_table_text(nested) for nested in cell.tables)
+    return "\n".join(chunks)
+
+
 def test_page_is_a4_with_adequate_margins() -> None:
     doc = _load_master_template()
     section = doc.sections[0]
@@ -40,9 +49,7 @@ def test_signature_area_table_present_with_two_columns() -> None:
 
 def test_signature_placeholders_present_in_template() -> None:
     doc = _load_master_template()
-    full_text = "\n".join(
-        cell.text for table in doc.tables for row in table.rows for cell in row.cells
-    )
+    full_text = "\n".join(_table_text(table) for table in doc.tables)
     assert "{{ executor_signature }}" in full_text
     assert "{{ executor_stamp }}" in full_text
     assert "{{ client_signature }}" in full_text
@@ -52,7 +59,7 @@ def test_signature_placeholders_present_in_template() -> None:
 def test_required_placeholders_present() -> None:
     doc = _load_master_template()
     all_text = "\n".join(p.text for p in doc.paragraphs)
-    all_text += "\n".join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
+    all_text += "\n".join(_table_text(table) for table in doc.tables)
     required = [
         "{{ contract_number }}",
         "{{ contract_date }}",

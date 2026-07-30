@@ -119,6 +119,43 @@ def test_manual_answer_heuristics_extract_amount_and_payment() -> None:
     assert merged.payment_type == "after_result"
 
 
+def test_manual_answer_heuristics_supports_short_k_amount() -> None:
+    merged = quick_contract_service._apply_manual_answer_heuristics(
+        _conditions(amount_kzt=None, payment_type="custom"),
+        "60К, оплата сразу",
+    )
+    assert merged.amount_kzt == 60000
+    assert merged.payment_type == "prepayment"
+
+
+def test_manual_answer_heuristics_does_not_treat_phone_as_amount() -> None:
+    merged = quick_contract_service._apply_manual_answer_heuristics(
+        _conditions(amount_kzt=None, payment_type="custom"),
+        "+7 700 000 00 00, стоимость 60К, оплата после результата",
+    )
+    assert merged.amount_kzt == 60000
+
+
+async def test_explicit_text_identity_wins_over_ai_interpretation() -> None:
+    class FakeOpenAI:
+        is_enabled = True
+
+        async def extract_identity_from_text(self, *, employee_text: str) -> IdentityExtraction:
+            return IdentityExtraction(full_name="ОШИБОЧНОЕ ИМЯ", iin="000000000000")
+
+        async def extract_contract_conditions(
+            self, *, employee_text: str
+        ) -> ContractConditions:
+            return _conditions()
+
+    identity, _ = await quick_contract_service.extract_identity_and_conditions_from_text(
+        FakeOpenAI(),  # type: ignore[arg-type]
+        text="ФИО: ТЮ ОЛЕГ ВИКТОРОВИЧ, ИИН: 731121302594; снятие ареста, 60К",
+    )
+    assert identity.full_name == "ТЮ ОЛЕГ ВИКТОРОВИЧ"
+    assert identity.iin == "731121302594"
+
+
 def test_manual_edit_instruction_heuristics_amount() -> None:
     edit = quick_contract_service._manual_edit_instruction_heuristics("Поменяй стоимость на 30000")
     assert edit.amount_kzt == 30000
@@ -204,3 +241,39 @@ async def test_process_quick_contract_message_manual_mode_missing_fields(db_sess
     assert "iin" in outcome.missing_fields
     assert "amount" in outcome.missing_fields
     assert outcome.pending_payload is not None
+
+
+async def test_text_flow_accepts_fio_iin_and_requests_only_conditions(
+    db_session: AsyncSession,
+) -> None:
+    manager = await _manager(db_session)
+    outcome = await quick_contract_service.process_quick_contract_text(
+        db_session,
+        openai_service=OpenAIService(),
+        text="ФИО: ТЮ ОЛЕГ ВИКТОРОВИЧ, ИИН: 731121302594",
+        manager_id=manager.id,
+    )
+    assert "full_name" not in outcome.missing_fields
+    assert "iin" not in outcome.missing_fields
+    assert "service_type" in outcome.missing_fields
+    assert "amount" in outcome.missing_fields
+    assert "payment_type" in outcome.missing_fields
+
+
+async def test_clarification_can_repair_missing_identity_without_ai(
+    db_session: AsyncSession,
+) -> None:
+    manager = await _manager(db_session)
+    pending = {
+        "identity": IdentityExtraction().model_dump(),
+        "conditions": _conditions().model_dump(),
+        "manager_id": manager.id,
+    }
+    outcome = await quick_contract_service.merge_clarification_answer(
+        db_session,
+        openai_service=OpenAIService(),
+        pending=pending,
+        answer_text="ФИО: ТЮ ОЛЕГ ВИКТОРОВИЧ, ИИН: 731121302594",
+    )
+    assert "full_name" not in outcome.missing_fields
+    assert "iin" not in outcome.missing_fields
