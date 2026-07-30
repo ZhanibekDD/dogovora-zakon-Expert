@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+
+class ContractRenderContext(BaseModel):
+    """Everything docxtpl needs to fill the master template for one contract."""
+
+    contract_number: int
+    contract_date: str
+    contract_city: str
+
+    client_full_name: str
+    client_iin: str
+    client_phone: str
+    client_address: str
+
+    service_subject: str
+    service_actions: str
+    result_definition: str
+
+    amount_digits: str
+    amount_words: str
+    payment_terms: str
+    work_period: str
+    penalty_clause: str
+
+    executor_name: str
+    executor_full_name: str
+    executor_brand_name: str
+    executor_iin: str
+    executor_phone: str
+    executor_address: str
+
+    executor_signature: str | None = None
+    executor_stamp: str | None = None
+    client_signature: str | None = None
+    client_signature_date: str | None = None

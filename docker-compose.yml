@@ -1,0 +1,121 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zakonexpert
+      POSTGRES_PASSWORD: zakonexpert
+      POSTGRES_DB: zakonexpert
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zakonexpert -d zakonexpert"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [zakonexpert]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [zakonexpert]
+
+  migrate:
+    build: .
+    command: ["migrate"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zakonexpert:zakonexpert@postgres:5432/zakonexpert
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [zakonexpert]
+
+  bot:
+    build: .
+    command: ["bot"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zakonexpert:zakonexpert@postgres:5432/zakonexpert
+      DATABASE_URL_SYNC: postgresql+psycopg2://zakonexpert:zakonexpert@postgres:5432/zakonexpert
+      REDIS_URL: redis://redis:6379/0
+      LIBREOFFICE_PATH: soffice
+    volumes:
+      - storage_data:/app/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "app.bot.main"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks: [zakonexpert]
+
+  api:
+    build: .
+    command: ["api"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zakonexpert:zakonexpert@postgres:5432/zakonexpert
+      DATABASE_URL_SYNC: postgresql+psycopg2://zakonexpert:zakonexpert@postgres:5432/zakonexpert
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - storage_data:/app/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; socket.create_connection(('localhost', 8000), timeout=3)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks: [zakonexpert]
+
+  worker:
+    build: .
+    command: ["worker"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zakonexpert:zakonexpert@postgres:5432/zakonexpert
+      DATABASE_URL_SYNC: postgresql+psycopg2://zakonexpert:zakonexpert@postgres:5432/zakonexpert
+      REDIS_URL: redis://redis:6379/0
+      LIBREOFFICE_PATH: soffice
+    volumes:
+      - storage_data:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "app.worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks: [zakonexpert]
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+
+networks:
+  zakonexpert:

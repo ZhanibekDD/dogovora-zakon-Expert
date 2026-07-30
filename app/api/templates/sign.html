@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Подписание договора № {{ contract.contract_number }} — ZakonExpert</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; color: #1c1c1e; }
+  h1 { font-size: 20px; }
+  .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .consent { font-size: 14px; line-height: 1.5; color: #333; max-height: 220px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 8px; }
+  canvas { border: 2px dashed #999; border-radius: 8px; width: 100%; touch-action: none; background: #fff; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  button { flex: 1; padding: 12px; border-radius: 8px; border: none; font-size: 15px; cursor: pointer; }
+  #clearBtn { background: #eee; }
+  #submitBtn { background: #0a84ff; color: white; }
+  #submitBtn:disabled { background: #a9c9f0; cursor: not-allowed; }
+  label.consent-check { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: 14px; }
+  .error { color: #d92626; font-size: 14px; margin-top: 8px; }
+  .note { font-size: 12px; color: #777; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <h1>Договор № {{ contract.contract_number }}</h1>
+  <div class="card">
+    <p><strong>Клиент:</strong> {{ client_name }}</p>
+    <p><strong>ИИН:</strong> {{ client_iin_masked }}</p>
+    <p><strong>Телефон:</strong> {{ client_phone_masked }}</p>
+    <p>Пожалуйста, ознакомьтесь с полным текстом договора (PDF был направлен вам в Telegram) перед подписанием.</p>
+  </div>
+
+  <div class="card">
+    <strong>Согласие на подписание</strong>
+    <div class="consent">{{ consent_text }}</div>
+    <label class="consent-check">
+      <input type="checkbox" id="consentCheckbox">
+      <span>Я прочитал(а) договор и согласен(на) с условиями и текстом выше.</span>
+    </label>
+  </div>
+
+  <div class="card">
+    <strong>Ваша подпись (простая электронная подпись)</strong>
+    <p class="note">Нарисуйте подпись пальцем или мышью в поле ниже.</p>
+    <canvas id="sigCanvas" height="180"></canvas>
+    <div class="row">
+      <button type="button" id="clearBtn">Очистить</button>
+    </div>
+  </div>
+
+  <form id="signForm" method="post" action="/sign/{{ contract.id }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="consent" id="consentField" value="false">
+    <input type="hidden" name="signature_image" id="signatureField">
+    <div id="errorBox" class="error"></div>
+    <div class="row">
+      <button type="submit" id="submitBtn" disabled>Подписать договор</button>
+    </div>
+  </form>
+
+<script>
+const canvas = document.getElementById('sigCanvas');
+const ctx = canvas.getContext('2d');
+function resize() {
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#1c1c1e';
+}
+window.addEventListener('resize', resize);
+resize();
+
+let drawing = false;
+let hasStroke = false;
+
+function pos(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const point = evt.touches ? evt.touches[0] : evt;
+  return { x: point.clientX - rect.left, y: point.clientY - rect.top };
+}
+function start(evt) { drawing = true; const p = pos(evt); ctx.beginPath(); ctx.moveTo(p.x, p.y); evt.preventDefault(); }
+function move(evt) {
+  if (!drawing) return;
+  const p = pos(evt);
+  ctx.lineTo(p.x, p.y); ctx.stroke();
+  hasStroke = true;
+  updateSubmitState();
+  evt.preventDefault();
+}
+function end() { drawing = false; }
+
+canvas.addEventListener('mousedown', start);
+canvas.addEventListener('mousemove', move);
+window.addEventListener('mouseup', end);
+canvas.addEventListener('touchstart', start, { passive: false });
+canvas.addEventListener('touchmove', move, { passive: false });
+canvas.addEventListener('touchend', end);
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  hasStroke = false;
+  updateSubmitState();
+});
+
+const consentCheckbox = document.getElementById('consentCheckbox');
+const submitBtn = document.getElementById('submitBtn');
+function updateSubmitState() {
+  submitBtn.disabled = !(hasStroke && consentCheckbox.checked);
+}
+consentCheckbox.addEventListener('change', updateSubmitState);
+
+document.getElementById('signForm').addEventListener('submit', (evt) => {
+  if (!hasStroke) {
+    evt.preventDefault();
+    document.getElementById('errorBox').textContent = 'Пожалуйста, нарисуйте подпись перед отправкой.';
+    return;
+  }
+  document.getElementById('consentField').value = consentCheckbox.checked ? 'true' : 'false';
+  document.getElementById('signatureField').value = canvas.toDataURL('image/png');
+});
+</script>
+</body>
+</html>

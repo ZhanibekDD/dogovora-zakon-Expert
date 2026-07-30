@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from docx import Document as DocxReader
+
+from app.core.config import get_settings
+from app.schemas.contract import ContractRenderContext
+from app.services import document_service
+
+
+def _sample_context(**overrides) -> ContractRenderContext:
+    base = dict(
+        contract_number=42,
+        contract_date="13.07.2026",
+        contract_city="г. Талдыкорган",
+        client_full_name="СЕЙТЖАНОВ АЙБЕК НҰРЛАНҰЛЫ",
+        client_iin="010312500019",
+        client_phone="+7 701 234 5678",
+        client_address="не указан",
+        service_subject="Тестовый предмет договора.",
+        service_actions="тестовые действия",
+        result_definition="тестовый результат",
+        amount_digits="120 000 тенге",
+        amount_words="сто двадцать тысяч тенге",
+        payment_terms="Оплата производится в день подписания договора.",
+        work_period="в разумный срок",
+        penalty_clause="Пеня 0,1% в день.",
+        executor_name="ИП ZakonExpert",
+        executor_full_name="Индивидуальный предприниматель Кияшев Жанибек Даулетович",
+        executor_brand_name="ZakonExpert",
+        executor_iin="000725500183",
+        executor_phone="+7 705 876 27 95",
+        executor_address="г. Талдыкорган, ул. Акын Сара, 152",
+    )
+    base.update(overrides)
+    return ContractRenderContext(**base)
+
+
+def test_render_draft_docx_contains_client_data(tmp_path: Path) -> None:
+    settings = get_settings()
+    template_path = settings.templates_dir / "master_v1.docx"
+    output_path = tmp_path / "draft.docx"
+
+    document_service.render_contract_docx(
+        template_docx_path=template_path,
+        context=_sample_context(),
+        output_path=output_path,
+        include_executor_signature=False,
+    )
+
+    assert output_path.exists()
+    doc = DocxReader(str(output_path))
+    full_text = "\n".join(p.text for p in doc.paragraphs) + "\n".join(
+        cell.text for table in doc.tables for row in table.rows for cell in row.cells
+    )
+    assert "СЕЙТЖАНОВ АЙБЕК НҰРЛАНҰЛЫ" in full_text
+    assert "010312500019" in full_text
+    assert "120 000 тенге" in full_text
+    assert "{{" not in full_text  # no unrendered Jinja placeholders remain
+
+
+def test_client_signature_is_always_blank_regardless_of_input(tmp_path: Path) -> None:
+    """Security invariant: even if a caller tried to smuggle a client signature value into
+    the render context, document_service must never place it in the DOCX."""
+    output_path = tmp_path / "draft_with_attempted_signature.docx"
+    context = _sample_context(client_signature="SHOULD_NEVER_APPEAR", client_signature_date="01.01.2026")
+
+    settings = get_settings()
+    document_service.render_contract_docx(
+        template_docx_path=settings.templates_dir / "master_v1.docx",
+        context=context,
+        output_path=output_path,
+        include_executor_signature=False,
+    )
+
+    doc = DocxReader(str(output_path))
+    full_text = "\n".join(p.text for p in doc.paragraphs) + "\n".join(
+        cell.text for table in doc.tables for row in table.rows for cell in row.cells
+    )
+    assert "SHOULD_NEVER_APPEAR" not in full_text
+
+
+def test_executor_signature_and_stamp_embedded_only_when_requested(tmp_path: Path) -> None:
+    settings = get_settings()
+    with_sig_path = tmp_path / "final.docx"
+    without_sig_path = tmp_path / "draft.docx"
+
+    document_service.render_contract_docx(
+        template_docx_path=settings.templates_dir / "master_v1.docx",
+        context=_sample_context(),
+        output_path=with_sig_path,
+        include_executor_signature=True,
+    )
+    document_service.render_contract_docx(
+        template_docx_path=settings.templates_dir / "master_v1.docx",
+        context=_sample_context(),
+        output_path=without_sig_path,
+        include_executor_signature=False,
+    )
+
+    with_sig_images = len(DocxReader(str(with_sig_path)).inline_shapes)
+    without_sig_images = len(DocxReader(str(without_sig_path)).inline_shapes)
+    assert with_sig_images >= 2  # signature + stamp
+    assert without_sig_images == 0
