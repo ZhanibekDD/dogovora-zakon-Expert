@@ -324,26 +324,12 @@ def _build_parties_page(document: DocumentType) -> None:
     exec_label.paragraph_format.space_after = Pt(3)
     _set_run_font(exec_label.add_run("Руководитель"), size=9.5, bold=True)
 
-    exec_images = executor_cell.add_table(rows=1, cols=2)
-    _set_table_geometry(exec_images, (2326, 2326))
-    _remove_table_borders(exec_images)
-    signature_p = exec_images.cell(0, 0).paragraphs[0]
-    signature_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    signature_p.paragraph_format.space_after = Pt(0)
-    signature_p.add_run("{{ executor_signature }}")
-    stamp_p = exec_images.cell(0, 1).paragraphs[0]
-    stamp_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    stamp_p.paragraph_format.space_after = Pt(0)
-    stamp_p.add_run("{{ executor_stamp }}")
-
-    exec_line = executor_cell.add_paragraph()
-    exec_line.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    exec_line.paragraph_format.space_before = Pt(0)
-    exec_line.paragraph_format.space_after = Pt(0)
-    _set_run_font(
-        exec_line.add_run("________________ / {{ executor_signer_short_name }} /"),
-        size=9.5,
-    )
+    executor_mark = executor_cell.add_paragraph()
+    executor_mark.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    executor_mark.paragraph_format.space_before = Pt(0)
+    executor_mark.paragraph_format.space_after = Pt(0)
+    executor_mark.paragraph_format.line_spacing = 1
+    executor_mark.add_run("{{ executor_signature_block }}")
 
     client_label = client_cell.paragraphs[0]
     client_label.paragraph_format.space_after = Pt(4)

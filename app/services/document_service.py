@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.schemas.contract import ContractRenderContext
 from app.services.signature_asset_service import (
     SignatureAssetError,
+    compose_executor_mark,
     prepare_signature_asset,
     validate_executor_asset_binding,
 )
@@ -68,23 +69,24 @@ def render_contract_docx(
                 "Загрузите изображения заново через /signature_settings."
             ) from exc
 
-        # Millimetres are deliberate physical print sizes. Pixel dimensions never influence
-        # the result, and only width is set so Word/LibreOffice cannot distort the aspect ratio.
-        signature_stream = io.BytesIO(signature.png_bytes)
-        stamp_stream = io.BytesIO(stamp.png_bytes)
-        data["executor_signature"] = InlineImage(
-            doc,
-            signature_stream,
-            width=Mm(settings.executor_signature_width_mm),
+        mark = compose_executor_mark(
+            signature_png_bytes=signature.png_bytes,
+            stamp_png_bytes=stamp.png_bytes,
+            signer_short_name=settings.executor_signer_short_name,
+            signature_width_mm=settings.executor_signature_width_mm,
+            stamp_diameter_mm=settings.executor_stamp_diameter_mm,
+            block_width_mm=settings.executor_signature_block_width_mm,
         )
-        data["executor_stamp"] = InlineImage(
+        # Word receives a single transparent block with geometry already fixed in millimetres.
+        # It can no longer separate, stack or independently scale the signature and seal.
+        mark_stream = io.BytesIO(mark.png_bytes)
+        data["executor_signature_block"] = InlineImage(
             doc,
-            stamp_stream,
-            width=Mm(settings.executor_stamp_diameter_mm),
+            mark_stream,
+            width=Mm(mark.width_mm),
         )
     else:
-        data["executor_signature"] = ""
-        data["executor_stamp"] = ""
+        data["executor_signature_block"] = ""
 
     doc.render(data)
     output_path.parent.mkdir(parents=True, exist_ok=True)

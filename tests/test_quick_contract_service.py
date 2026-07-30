@@ -213,8 +213,8 @@ async def test_generate_contract_immediately_produces_final_signed_document(db_s
     # production before this assertion was added.
     assert contract.approved_at.tzinfo is None
 
-    # signature + stamp must already be embedded
-    assert len(DocxReader(docx_path).inline_shapes) >= 2
+    # signature + seal must already be embedded as one fixed-layout composition
+    assert len(DocxReader(docx_path).inline_shapes) == 1
 
     # and no "draft" watermark anywhere on the final PDF
     reader = PdfReader(pdf_path)

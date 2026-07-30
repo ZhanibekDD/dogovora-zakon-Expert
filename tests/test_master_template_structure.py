@@ -50,8 +50,7 @@ def test_signature_area_table_present_with_two_columns() -> None:
 def test_signature_placeholders_present_in_template() -> None:
     doc = _load_master_template()
     full_text = "\n".join(_table_text(table) for table in doc.tables)
-    assert "{{ executor_signature }}" in full_text
-    assert "{{ executor_stamp }}" in full_text
+    assert "{{ executor_signature_block }}" in full_text
     assert "{{ client_signature }}" in full_text
     assert "{{ client_signature_date }}" in full_text
 

@@ -99,7 +99,8 @@ async def _store_asset(
         await message.answer(
             f"✅ Подпись сохранена (SHA-256: {digest[:16]}...).\n\n"
             f"Обработанный размер: {prepared.width_px}×{prepared.height_px} px; "
-            f"в договоре: {settings.executor_signature_width_mm:g} мм по ширине.\n\n"
+            f"в договоре: {settings.executor_signature_width_mm:g} мм по ширине.\n"
+            "Система автоматически совместит её с линией подписанта и печатью.\n\n"
             "Теперь отправьте PNG-файл печати ТОО с прозрачным фоном."
         )
     else:
@@ -108,5 +109,5 @@ async def _store_asset(
             f"✅ Печать сохранена (SHA-256: {digest[:16]}...).\n"
             f"Обработанный размер: {prepared.width_px}×{prepared.height_px} px; "
             f"в договоре: {settings.executor_stamp_diameter_mm:g} мм.\n"
-            "Настройка завершена."
+            "Подпись, линия и печать будут собраны в единый блок A4. Настройка завершена."
         )

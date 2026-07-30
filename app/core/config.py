@@ -70,16 +70,22 @@ class Settings(BaseSettings):
         alias="EXECUTOR_PAYMENT_DETAILS",
     )
     executor_signature_width_mm: float = Field(
-        default=37.0,
+        default=48.0,
         alias="EXECUTOR_SIGNATURE_WIDTH_MM",
-        ge=25,
+        ge=30,
         le=65,
     )
     executor_stamp_diameter_mm: float = Field(
-        default=38.0,
+        default=36.0,
         alias="EXECUTOR_STAMP_DIAMETER_MM",
-        ge=25,
-        le=50,
+        ge=30,
+        le=42,
+    )
+    executor_signature_block_width_mm: float = Field(
+        default=82.0,
+        alias="EXECUTOR_SIGNATURE_BLOCK_WIDTH_MM",
+        ge=70,
+        le=84,
     )
     contract_number_start: int = Field(default=1, alias="CONTRACT_NUMBER_START")
 
