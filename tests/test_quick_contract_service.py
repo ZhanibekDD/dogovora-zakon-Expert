@@ -260,6 +260,7 @@ async def test_text_flow_accepts_fio_iin_and_requests_only_conditions(
     assert "payment_type" in outcome.missing_fields
 
 
+@pytest.mark.skipif(not SOFFICE_AVAILABLE, reason="LibreOffice (soffice) is not installed on this machine")
 async def test_clarification_can_repair_missing_identity_without_ai(
     db_session: AsyncSession,
 ) -> None:
