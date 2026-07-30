@@ -356,20 +356,6 @@ def _build_parties_page(document: DocumentType) -> None:
     )
     _keep_row_together(signatures.rows[1])
 
-    note = document.add_paragraph()
-    note.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    note.paragraph_format.space_before = Pt(6)
-    note.paragraph_format.space_after = Pt(0)
-    _set_run_font(
-        note.add_run(
-            "Простая электронная подпись Клиента фиксируется системой ZakonExpert Bot "
-            "с указанием даты, времени, IP-адреса и хеша документа."
-        ),
-        size=8.5,
-        italic=True,
-        color=MUTED,
-    )
-
 
 def build() -> None:
     document = Document()
