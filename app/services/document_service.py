@@ -11,6 +11,7 @@ from app.schemas.contract import ContractRenderContext
 from app.services.signature_asset_service import (
     SignatureAssetError,
     prepare_signature_asset,
+    validate_executor_asset_binding,
 )
 
 
@@ -49,9 +50,18 @@ def render_contract_docx(
                 "Не загружены подпись и/или печать Исполнителя. "
                 "Откройте /signature_settings и загрузите оба PNG-файла."
             )
+        signature_bytes = sig_path.read_bytes()
+        stamp_bytes = stamp_path.read_bytes()
         try:
-            signature = prepare_signature_asset(sig_path.read_bytes(), kind="signature")
-            stamp = prepare_signature_asset(stamp_path.read_bytes(), kind="stamp")
+            validate_executor_asset_binding(
+                settings.signature_assets_dir,
+                signature_bytes=signature_bytes,
+                stamp_bytes=stamp_bytes,
+                identifier_label=settings.executor_identifier_label,
+                identifier=settings.executor_identifier,
+            )
+            signature = prepare_signature_asset(signature_bytes, kind="signature")
+            stamp = prepare_signature_asset(stamp_bytes, kind="stamp")
         except SignatureAssetError as exc:
             raise ExecutorAssetsMissingError(
                 f"Файл подписи или печати некорректен: {exc}. "

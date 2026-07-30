@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import io
+from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
 
 from app.services.signature_asset_service import (
     SignatureAssetError,
+    bind_executor_asset,
     prepare_signature_asset,
+    validate_executor_asset_binding,
 )
 
 
@@ -43,3 +47,67 @@ def test_blank_png_is_rejected() -> None:
     image.save(output, format="PNG")
     with pytest.raises(SignatureAssetError):
         prepare_signature_asset(output.getvalue(), kind="stamp")
+
+
+def test_assets_are_bound_to_current_legal_entity(tmp_path: Path) -> None:
+    signature = prepare_signature_asset(
+        _png_with_white_margin(stamp=False),
+        kind="signature",
+    ).png_bytes
+    stamp = prepare_signature_asset(
+        _png_with_white_margin(stamp=True),
+        kind="stamp",
+    ).png_bytes
+    for kind, data in (("signature", signature), ("stamp", stamp)):
+        bind_executor_asset(
+            tmp_path,
+            kind=kind,
+            sha256=hashlib.sha256(data).hexdigest(),
+            identifier_label="БИН",
+            identifier="260740044168",
+        )
+
+    validate_executor_asset_binding(
+        tmp_path,
+        signature_bytes=signature,
+        stamp_bytes=stamp,
+        identifier_label="БИН",
+        identifier="260740044168",
+    )
+
+    with pytest.raises(SignatureAssetError, match="другой организации"):
+        validate_executor_asset_binding(
+            tmp_path,
+            signature_bytes=signature,
+            stamp_bytes=stamp,
+            identifier_label="ИИН",
+            identifier="000725500183",
+        )
+
+
+def test_asset_replacement_after_binding_is_rejected(tmp_path: Path) -> None:
+    signature = prepare_signature_asset(
+        _png_with_white_margin(stamp=False),
+        kind="signature",
+    ).png_bytes
+    stamp = prepare_signature_asset(
+        _png_with_white_margin(stamp=True),
+        kind="stamp",
+    ).png_bytes
+    for kind, data in (("signature", signature), ("stamp", stamp)):
+        bind_executor_asset(
+            tmp_path,
+            kind=kind,
+            sha256=hashlib.sha256(data).hexdigest(),
+            identifier_label="БИН",
+            identifier="260740044168",
+        )
+
+    with pytest.raises(SignatureAssetError, match="печать не подтверждена"):
+        validate_executor_asset_binding(
+            tmp_path,
+            signature_bytes=signature,
+            stamp_bytes=stamp + b"tampered",
+            identifier_label="БИН",
+            identifier="260740044168",
+        )

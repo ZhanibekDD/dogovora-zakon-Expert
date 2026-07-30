@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from app.bot.handlers.quick_contract import (
+    _executor_assets_error_text,
     _looks_like_quick_contract_request,
     _looks_like_quick_text_request,
 )
+from app.services.document_service import ExecutorAssetsMissingError
 
 
 @pytest.mark.parametrize(
@@ -40,3 +42,12 @@ def test_recognizes_text_identity_contract_request(text: str) -> None:
 @pytest.mark.parametrize("text", ["Привет", "Снятие ареста 50000", "731121302594"])
 def test_does_not_autostart_text_flow_without_name_and_iin(text: str) -> None:
     assert _looks_like_quick_text_request(text) is False
+
+
+def test_executor_asset_error_gives_actionable_instruction() -> None:
+    text = _executor_assets_error_text(
+        ExecutorAssetsMissingError("печать относится к другой организации")
+    )
+    assert "Договор не сформирован" in text
+    assert "/signature_settings" in text
+    assert "печать относится к другой организации" in text

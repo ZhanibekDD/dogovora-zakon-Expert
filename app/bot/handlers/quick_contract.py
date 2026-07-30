@@ -24,6 +24,7 @@ from app.services.contract_service import (
     approve_contract_documents,
     get_or_create_active_template,
 )
+from app.services.document_service import ExecutorAssetsMissingError
 from app.services.identity_text_service import parse_identity_from_text
 from app.services.openai_service import OpenAIService
 from app.services.storage_service import UploadRejected, save_upload
@@ -49,6 +50,15 @@ QUICK_INSTRUCTION_TEXT = (
     'Пример: "ФИО: Иванов Иван Иванович, ИИН: 900101300123; снятие ареста; '
     '50 000 тенге; оплата после результата; +7 700 000 0000"'
 )
+
+
+def _executor_assets_error_text(exc: ExecutorAssetsMissingError) -> str:
+    return (
+        "⛔ Договор не сформирован: подпись или печать Исполнителя требует обновления.\n\n"
+        f"{exc}\n\n"
+        "Супер-администратор должен открыть /signature_settings и заново загрузить "
+        "подпись и актуальную печать ТОО."
+    )
 
 
 def _looks_like_quick_contract_request(caption: str | None) -> bool:
@@ -155,15 +165,20 @@ async def _process_document_message(message: Message, state: FSMContext, db_user
     caption = message.caption or ""
 
     async with session_scope() as session:
-        outcome = await quick_contract_service.process_quick_contract_message(
-            session,
-            openai_service=openai_service,
-            image_bytes=primary_bytes,
-            mime_type=primary_mime,
-            caption=caption,
-            manager_id=db_user.id,
-            extra_images=extra_images,
-        )
+        try:
+            outcome = await quick_contract_service.process_quick_contract_message(
+                session,
+                openai_service=openai_service,
+                image_bytes=primary_bytes,
+                mime_type=primary_mime,
+                caption=caption,
+                manager_id=db_user.id,
+                extra_images=extra_images,
+            )
+        except ExecutorAssetsMissingError as exc:
+            await session.rollback()
+            await status.edit_text(_executor_assets_error_text(exc), parse_mode=None)
+            return
 
         if outcome.missing_fields:
             await message_link_service.save_pending_clarification(
@@ -202,12 +217,17 @@ async def _process_document_message(message: Message, state: FSMContext, db_user
 async def _process_text_message(message: Message, state: FSMContext, db_user: User) -> None:
     status = await message.answer("⏳ Формирую договор...")
     async with session_scope() as session:
-        outcome = await quick_contract_service.process_quick_contract_text(
-            session,
-            openai_service=openai_service,
-            text=message.text or "",
-            manager_id=db_user.id,
-        )
+        try:
+            outcome = await quick_contract_service.process_quick_contract_text(
+                session,
+                openai_service=openai_service,
+                text=message.text or "",
+                manager_id=db_user.id,
+            )
+        except ExecutorAssetsMissingError as exc:
+            await session.rollback()
+            await status.edit_text(_executor_assets_error_text(exc), parse_mode=None)
+            return
 
         if outcome.missing_fields:
             await message_link_service.save_pending_clarification(
@@ -274,9 +294,17 @@ async def handle_clarification_answer(message: Message, state: FSMContext, db_us
     status = await message.answer("⏳ Обрабатываю ответ...")
 
     async with session_scope() as session:
-        outcome = await quick_contract_service.merge_clarification_answer(
-            session, openai_service=openai_service, pending=pending, answer_text=message.text
-        )
+        try:
+            outcome = await quick_contract_service.merge_clarification_answer(
+                session,
+                openai_service=openai_service,
+                pending=pending,
+                answer_text=message.text,
+            )
+        except ExecutorAssetsMissingError as exc:
+            await session.rollback()
+            await status.edit_text(_executor_assets_error_text(exc), parse_mode=None)
+            return
 
         if outcome.missing_fields:
             await message_link_service.save_pending_clarification(
@@ -339,6 +367,10 @@ async def handle_contract_edit_reply(message: Message, db_user: User) -> None:
             )
         except quick_contract_service.ContractAlreadySignedError as exc:
             await status.edit_text(f"⛔ {exc}", parse_mode=None)
+            return
+        except ExecutorAssetsMissingError as exc:
+            await session.rollback()
+            await status.edit_text(_executor_assets_error_text(exc), parse_mode=None)
             return
 
         await log_action(
@@ -418,8 +450,7 @@ async def redo_conditions_apply(message: Message, state: FSMContext, db_user: Us
         else:
             conditions = ContractConditions(service_type=message.text[:255])
 
-        if not conditions.template_code:
-            conditions.template_code = OpenAIService.suggest_template(conditions)
+        conditions.template_code = OpenAIService.suggest_template(conditions)
         if not conditions.result_definition:
             conditions.result_definition = OpenAIService.suggest_result_definition(conditions)
 
@@ -430,9 +461,17 @@ async def redo_conditions_apply(message: Message, state: FSMContext, db_user: Us
         contract.payment_type = conditions.payment_type
         contract.version += 1
 
-        docx_path, pdf_path = await approve_contract_documents(
-            session, contract, client, approved_by_id=db_user.id
-        )
+        try:
+            docx_path, pdf_path = await approve_contract_documents(
+                session,
+                contract,
+                client,
+                approved_by_id=db_user.id,
+            )
+        except ExecutorAssetsMissingError as exc:
+            await session.rollback()
+            await status.edit_text(_executor_assets_error_text(exc), parse_mode=None)
+            return
         contract_number = contract.contract_number
 
         await log_action(

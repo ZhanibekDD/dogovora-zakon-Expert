@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
@@ -12,6 +15,7 @@ MAX_SOURCE_SIDE_PX = 6000
 MAX_OUTPUT_SIDE_PX = 1800
 MIN_VISIBLE_WIDTH_PX = 24
 MIN_VISIBLE_HEIGHT_PX = 12
+ASSET_MANIFEST_NAME = "hashes.json"
 
 
 class SignatureAssetError(ValueError):
@@ -23,6 +27,101 @@ class PreparedSignatureAsset:
     png_bytes: bytes
     width_px: int
     height_px: int
+
+
+def _legal_identity_key(identifier_label: str, identifier: str) -> str:
+    return f"{identifier_label.strip().upper()}:{identifier.strip()}"
+
+
+def bind_executor_asset(
+    asset_dir: Path,
+    *,
+    kind: AssetKind,
+    sha256: str,
+    identifier_label: str,
+    identifier: str,
+) -> None:
+    """Bind an uploaded image to the executor's current legal identity.
+
+    A company transition must never silently reuse the previous entity's seal. When the
+    legal identity changes, the first upload starts a fresh asset set and both files must be
+    uploaded again before a final contract can be rendered.
+    """
+
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = asset_dir / ASSET_MANIFEST_NAME
+    legal_identity = _legal_identity_key(identifier_label, identifier)
+    manifest: dict = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            manifest = {}
+
+    stored_assets = manifest.get("assets")
+    assets = (
+        stored_assets
+        if manifest.get("legal_identity") == legal_identity and isinstance(stored_assets, dict)
+        else {}
+    )
+    assets[kind] = sha256
+    payload = {
+        "version": 1,
+        "legal_identity": legal_identity,
+        "identifier_label": identifier_label,
+        "identifier": identifier,
+        "assets": assets,
+    }
+    temporary = manifest_path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(manifest_path)
+
+
+def validate_executor_asset_binding(
+    asset_dir: Path,
+    *,
+    signature_bytes: bytes,
+    stamp_bytes: bytes,
+    identifier_label: str,
+    identifier: str,
+) -> None:
+    """Reject stale, replaced or legally mismatched signature/seal assets."""
+
+    manifest_path = asset_dir / ASSET_MANIFEST_NAME
+    expected_identity = _legal_identity_key(identifier_label, identifier)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        raise SignatureAssetError(
+            f"подпись и печать не подтверждены для {identifier_label} {identifier}; "
+            "загрузите оба PNG заново через /signature_settings"
+        ) from exc
+
+    if manifest.get("legal_identity") != expected_identity:
+        raise SignatureAssetError(
+            f"загруженные изображения относятся к другой организации; для "
+            f"{identifier_label} {identifier} загрузите подпись и печать заново"
+        )
+
+    assets = manifest.get("assets")
+    if not isinstance(assets, dict):
+        raise SignatureAssetError(
+            f"привязка подписи и печати повреждена; для {identifier_label} {identifier} "
+            "загрузите оба PNG заново через /signature_settings"
+        )
+    actual = {
+        "signature": hashlib.sha256(signature_bytes).hexdigest(),
+        "stamp": hashlib.sha256(stamp_bytes).hexdigest(),
+    }
+    for kind, label in (("signature", "подпись"), ("stamp", "печать")):
+        if assets.get(kind) != actual[kind]:
+            raise SignatureAssetError(
+                f"{label} не подтверждена для {identifier_label} {identifier}; "
+                "загрузите оба PNG заново через /signature_settings"
+            )
 
 
 def _visible_alpha(image: Image.Image) -> Image.Image:
