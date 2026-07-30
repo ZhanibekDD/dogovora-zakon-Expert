@@ -19,7 +19,7 @@ OUTPUT_PATH = ROOT / "app" / "templates" / "contracts" / "master_v1.docx"
 # A4 / 18 mm margins / Times New Roman / restrained blue hierarchy are encoded here
 # explicitly so Word and LibreOffice render the same geometry.
 FONT = "Times New Roman"
-NAVY = "17365D"
+NAVY = "000000"
 MUTED = "667085"
 LIGHT_BLUE = "EAF0F7"
 LIGHT_BORDER = "B8C4D1"
