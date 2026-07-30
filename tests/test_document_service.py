@@ -85,7 +85,7 @@ def test_client_signature_is_always_blank_regardless_of_input(tmp_path: Path) ->
     assert "SHOULD_NEVER_APPEAR" not in full_text
 
 
-def test_executor_signature_and_stamp_embedded_only_when_requested(tmp_path: Path) -> None:
+def test_executor_signature_block_embedded_only_when_requested(tmp_path: Path) -> None:
     settings = get_settings()
     with_sig_path = tmp_path / "final.docx"
     without_sig_path = tmp_path / "draft.docx"
@@ -105,9 +105,8 @@ def test_executor_signature_and_stamp_embedded_only_when_requested(tmp_path: Pat
 
     with_sig_images = len(DocxReader(str(with_sig_path)).inline_shapes)
     without_sig_images = len(DocxReader(str(without_sig_path)).inline_shapes)
-    assert with_sig_images >= 2  # signature + stamp
+    assert with_sig_images == 1  # one fixed signature + seal composition
     assert without_sig_images == 0
 
     widths_mm = sorted(shape.width / 36000 for shape in DocxReader(str(with_sig_path)).inline_shapes)
-    assert any(abs(width - 38) < 0.5 for width in widths_mm)
-    assert any(abs(width - 37) < 0.5 for width in widths_mm)
+    assert any(abs(width - 82) < 0.5 for width in widths_mm)

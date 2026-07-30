@@ -65,6 +65,15 @@ def test_suggest_template_prefers_explicit_code() -> None:
     assert OpenAIService.suggest_template(conditions) == "fine_appeal"
 
 
+def test_suggest_template_reclassifies_generic_model_fallback() -> None:
+    conditions = ContractConditions(
+        service_type="Снятие арестов от ЧСИ",
+        template_code="custom_approved",
+    )
+    assert OpenAIService.suggest_template(conditions) == "arrest_lift_chsi"
+    assert "АИС ОИП" in OpenAIService.suggest_result_definition(conditions)
+
+
 def test_suggest_result_definition_prefers_explicit_value() -> None:
     conditions = ContractConditions(service_type="x", result_definition="явный результат")
     assert OpenAIService.suggest_result_definition(conditions) == "явный результат"

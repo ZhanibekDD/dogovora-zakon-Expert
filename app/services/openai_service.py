@@ -367,7 +367,9 @@ class OpenAIService:
 
     @staticmethod
     def suggest_template(conditions: ContractConditions) -> str:
-        if conditions.template_code:
+        # "custom_approved" is a generic model fallback, not a stronger signal than the
+        # employee's explicit service text. Reclassify it locally when the text is clear.
+        if conditions.template_code and conditions.template_code != "custom_approved":
             return conditions.template_code
         text = (conditions.service_type + " " + " ".join(conditions.service_details)).lower()
         if "выезд" in text:
@@ -390,7 +392,7 @@ class OpenAIService:
             return "court_decision_review"
         if "иск" in text:
             return "chsi_appeal_lawsuit"
-        return "custom_approved"
+        return conditions.template_code or "custom_approved"
 
     @staticmethod
     def suggest_result_definition(conditions: ContractConditions) -> str:

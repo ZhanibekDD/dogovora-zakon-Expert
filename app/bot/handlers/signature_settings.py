@@ -12,7 +12,12 @@ from app.database.models.signature import SignatureAsset
 from app.database.models.user import User
 from app.database.session import session_scope
 from app.services.audit_service import log_action
-from app.services.signature_asset_service import SignatureAssetError, prepare_signature_asset
+from app.services.signature_asset_service import (
+    AssetKind,
+    SignatureAssetError,
+    bind_executor_asset,
+    prepare_signature_asset,
+)
 
 router = Router(name="signature_settings")
 
@@ -38,7 +43,13 @@ async def receive_stamp_png(message: Message, state: FSMContext, db_user: User) 
     await _store_asset(message, state, db_user, kind="stamp")
 
 
-async def _store_asset(message: Message, state: FSMContext, db_user: User, *, kind: str) -> None:
+async def _store_asset(
+    message: Message,
+    state: FSMContext,
+    db_user: User,
+    *,
+    kind: AssetKind,
+) -> None:
     if not message.document or message.document.mime_type != "image/png":
         await message.answer("⛔ Нужен именно PNG-файл, отправленный как документ.")
         return
@@ -59,6 +70,13 @@ async def _store_asset(message: Message, state: FSMContext, db_user: User, *, ki
     temporary.write_bytes(prepared.png_bytes)
     temporary.replace(dest)
     digest = sha256_bytes(prepared.png_bytes)
+    bind_executor_asset(
+        settings.signature_assets_dir,
+        kind=kind,
+        sha256=digest,
+        identifier_label=settings.executor_identifier_label,
+        identifier=settings.executor_identifier,
+    )
 
     async with session_scope() as session:
         session.add(
@@ -69,7 +87,11 @@ async def _store_asset(message: Message, state: FSMContext, db_user: User, *, ki
             action=f"{kind}_asset_uploaded",
             user_id=db_user.id,
             telegram_id=db_user.telegram_id,
-            details={"sha256": digest},
+            details={
+                "sha256": digest,
+                "executor_identifier_label": settings.executor_identifier_label,
+                "executor_identifier": settings.executor_identifier,
+            },
         )
 
     if kind == "signature":
@@ -77,7 +99,8 @@ async def _store_asset(message: Message, state: FSMContext, db_user: User, *, ki
         await message.answer(
             f"✅ Подпись сохранена (SHA-256: {digest[:16]}...).\n\n"
             f"Обработанный размер: {prepared.width_px}×{prepared.height_px} px; "
-            f"в договоре: {settings.executor_signature_width_mm:g} мм по ширине.\n\n"
+            f"в договоре: {settings.executor_signature_width_mm:g} мм по ширине.\n"
+            "Система автоматически совместит её с линией подписанта и печатью.\n\n"
             "Теперь отправьте PNG-файл печати ТОО с прозрачным фоном."
         )
     else:
@@ -86,5 +109,5 @@ async def _store_asset(message: Message, state: FSMContext, db_user: User, *, ki
             f"✅ Печать сохранена (SHA-256: {digest[:16]}...).\n"
             f"Обработанный размер: {prepared.width_px}×{prepared.height_px} px; "
             f"в договоре: {settings.executor_stamp_diameter_mm:g} мм.\n"
-            "Настройка завершена."
+            "Подпись, линия и печать будут собраны в единый блок A4. Настройка завершена."
         )

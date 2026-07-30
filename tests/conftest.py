@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 import tempfile
@@ -35,6 +37,7 @@ def _ensure_test_executor_assets() -> None:
         "signature",
     )
     os.makedirs(asset_dir, exist_ok=True)
+    created_kinds: set[str] = set()
     for kind in ("signature", "stamp"):
         path = os.path.join(asset_dir, f"executor_{kind}.png")
         if os.path.exists(path):
@@ -49,6 +52,31 @@ def _ensure_test_executor_assets() -> None:
             draw.ellipse((80, 80, 520, 520), outline=(25, 76, 160, 255), width=7)
         image.save(path, format="PNG")
         _CREATED_TEST_ASSETS.append(path)
+        created_kinds.add(kind)
+
+    # Bind only the disposable pair created by this test session. Never modify a developer's
+    # real local assets or their manifest.
+    if created_kinds == {"signature", "stamp"}:
+        manifest_path = os.path.join(asset_dir, "hashes.json")
+        assets = {}
+        for kind in created_kinds:
+            path = os.path.join(asset_dir, f"executor_{kind}.png")
+            with open(path, "rb") as stream:
+                assets[kind] = hashlib.sha256(stream.read()).hexdigest()
+        with open(manifest_path, "w", encoding="utf-8") as stream:
+            json.dump(
+                {
+                    "version": 1,
+                    "legal_identity": "БИН:260740044168",
+                    "identifier_label": "БИН",
+                    "identifier": "260740044168",
+                    "assets": assets,
+                },
+                stream,
+                ensure_ascii=False,
+                indent=2,
+            )
+        _CREATED_TEST_ASSETS.append(manifest_path)
 
 
 _ensure_test_executor_assets()

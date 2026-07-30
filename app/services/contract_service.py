@@ -165,12 +165,9 @@ def _build_render_context(
     *, contract: Contract, client: Client, conditions: ContractConditions
 ) -> ContractRenderContext:
     settings = get_settings()
-    preset = template_service.get_preset(
-        conditions.template_code or "custom_approved"
-    )
-    result_definition = conditions.result_definition or (
-        template_service.get_preset(conditions.template_code or "custom_approved").subject
-    )
+    template_code = OpenAIService.suggest_template(conditions)
+    preset = template_service.get_preset(template_code)
+    result_definition = OpenAIService.suggest_result_definition(conditions)
     amount = int(conditions.amount_kzt or 0)
 
     return ContractRenderContext(

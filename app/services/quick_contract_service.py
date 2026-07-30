@@ -265,8 +265,7 @@ async def generate_contract_immediately(
         session, identity, phone=conditions.client_phone, address=None
     )
 
-    if not conditions.template_code:
-        conditions.template_code = OpenAIService.suggest_template(conditions)
+    conditions.template_code = OpenAIService.suggest_template(conditions)
     if not conditions.result_definition:
         conditions.result_definition = OpenAIService.suggest_result_definition(conditions)
     await contract_service.draft_narrative_for_conditions(openai_service, conditions)
