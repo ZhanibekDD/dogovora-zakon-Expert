@@ -117,12 +117,15 @@ def compose_executor_mark(
         anchor="ls",
     )
 
+    # The signature must cross the line (as it would on paper) but its own stroke bounding
+    # box - which can extend well past the visible ink toward the bottom-right on a wide,
+    # looping scrawl - must never reach as far down as the printed name row below the line,
+    # or the two visually collide. Anchor the signature a fixed gap above the baseline
+    # instead of deriving it from a ratio of the signature's own height.
     signature_x = _mm_to_px(2)
-    signature_y = min(
-        height_px - signature.height - _mm_to_px(1),
-        baseline_y - round(signature.height * 0.58),
-    )
-    canvas.alpha_composite(signature, (signature_x, max(0, signature_y)))
+    gap_above_baseline_px = _mm_to_px(3)
+    signature_y = max(0, baseline_y - gap_above_baseline_px - signature.height)
+    canvas.alpha_composite(signature, (signature_x, signature_y))
 
     stamp_x = width_px - stamp.width - _mm_to_px(6)
     stamp_y = _mm_to_px(2)
