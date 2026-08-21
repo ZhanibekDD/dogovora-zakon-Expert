@@ -28,7 +28,7 @@ PAYMENT_TERMS_TEXT = {
     PaymentType.PREPAYMENT: "Оплата производится в день подписания договора до начала оказания услуг.",
     PaymentType.AFTER_RESULT: (
         "Оплата производится не позднее одного календарного дня после достижения результата, "
-        "указанного в п. 2.1 настоящего договора."
+        "указанного в п. 1.3 настоящего договора."
     ),
     PaymentType.ALREADY_PAID: (
         "Клиент полностью оплатил стоимость услуг до подписания договора. Исполнитель "
@@ -52,7 +52,7 @@ def build_payment_terms(conditions: ContractConditions) -> str:
         return (
             f"Оплата производится в два этапа: {format_amount_digits(first)} тенге до начала "
             f"оказания услуг, {format_amount_digits(second)} тенге не позднее одного "
-            "календарного дня после достижения результата, указанного в п. 2.1 настоящего "
+            "календарного дня после достижения результата, указанного в п. 1.3 настоящего "
             "договора."
         )
     return PAYMENT_TERMS_TEXT[payment_type]
@@ -140,13 +140,10 @@ async def create_draft_contract(
 async def draft_narrative_for_conditions(
     openai_service: OpenAIService, conditions: ContractConditions
 ) -> None:
-    """Best-effort: ask GPT to rewrite the approved base clauses 1.1/1.2, weaving in whatever
-    case-specific facts were extracted (bank, ЧСИ, взыскатель, нотариус, номер дела, доп.
-    условия), so the contract reads as drafted for this client rather than a generic template.
-    Mutates `conditions` in place. Silently leaves subject_paragraph/actions_paragraph unset
-    (falling back to the generic preset text in _build_render_context) if OpenAI is disabled,
-    unreachable, or returns something that fails validation - a drafting-quality feature must
-    never block a contract from being created."""
+    """Best-effort case-specific drafting for clauses 1.1/1.2.
+
+    The rest of the approved legal skeleton is deterministic and never delegated to the model.
+    """
     if not openai_service.is_enabled:
         return
     preset = template_service.get_preset(conditions.template_code or "custom_approved")
@@ -169,6 +166,11 @@ def _build_render_context(
     preset = template_service.get_preset(template_code)
     result_definition = OpenAIService.suggest_result_definition(conditions)
     amount = int(conditions.amount_kzt or 0)
+    payment_purpose = (
+        f"{settings.executor_bank_payment_purpose} № {contract.contract_number}"
+        if settings.executor_bank_payment_purpose
+        else f"Оплата по договору № {contract.contract_number}"
+    )
 
     return ContractRenderContext(
         contract_number=contract.contract_number,
@@ -184,7 +186,10 @@ def _build_render_context(
         amount_digits=f"{format_amount_digits(amount)} тенге",
         amount_words=amount_to_words_kzt(amount),
         payment_terms=build_payment_terms(conditions),
-        work_period=conditions.work_period or "в разумный срок с учётом объёма материалов дела",
+        work_period=(
+            conditions.work_period
+            or "до 30 календарных дней с даты получения полного комплекта документов и оплаты"
+        ),
         penalty_clause=DEFAULT_PENALTY_CLAUSE,
         executor_name=settings.executor_display_name,
         executor_full_name=settings.executor_full_name,
@@ -195,17 +200,23 @@ def _build_render_context(
         executor_signer_short_name=settings.executor_signer_short_name,
         executor_phone=settings.executor_phone,
         executor_address=settings.executor_address,
+        executor_website=settings.executor_website,
         executor_payment_details=settings.executor_payment_details,
+        executor_bank_beneficiary=settings.executor_bank_beneficiary,
+        executor_bank_beneficiary_identifier=settings.executor_bank_beneficiary_identifier,
+        executor_bank_name=settings.executor_bank_name,
+        executor_bank_bic=settings.executor_bank_bic,
+        executor_bank_iban=settings.executor_bank_iban,
+        executor_bank_payment_purpose=payment_purpose,
+        executor_kaspi_number=settings.executor_kaspi_number,
+        executor_kaspi_receiver=settings.executor_kaspi_receiver,
     )
 
 
 async def approve_contract_documents(
     session: AsyncSession, contract: Contract, client: Client, approved_by_id: int
 ) -> tuple[str, str]:
-    """Render the final DOCX/PDF with the executor's signature and stamp inserted.
-    `approved_by_id` is the employee who created (quick mode) or last edited the contract -
-    there is no separate manual approval step; whoever generates the document is recorded as
-    having approved it."""
+    """Render the final DOCX/PDF with the executor's signature and stamp inserted."""
     conditions = ContractConditions.model_validate(contract.service_data)
     context = _build_render_context(contract=contract, client=client, conditions=conditions)
     template = await session.get(ContractTemplate, contract.template_id)

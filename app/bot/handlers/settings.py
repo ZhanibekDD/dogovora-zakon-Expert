@@ -23,7 +23,12 @@ SUPERADMIN_ONLY = {"superadmin"}
 def _settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔢 Изменить следующий номер договора", callback_data="settings:set_number")],
+            [
+                InlineKeyboardButton(
+                    text="🔢 Изменить следующий номер договора",
+                    callback_data="settings:set_number",
+                )
+            ],
         ]
     )
 
@@ -49,10 +54,17 @@ async def show_settings(message: Message, role: str | None) -> None:
         f"Руководитель: {settings.executor_director_name}\n"
         f"Адрес: {settings.executor_address}\n"
         f"Телефон/WhatsApp: {settings.executor_phone}\n"
+        f"Сайт: {settings.executor_website}\n\n"
+        "<b>Банковские реквизиты</b>\n"
+        f"Получатель: {settings.executor_bank_beneficiary}\n"
+        f"ИИН/БИН получателя: {settings.executor_bank_beneficiary_identifier}\n"
+        f"Банк: {settings.executor_bank_name}\n"
+        f"БИК/SWIFT: {settings.executor_bank_bic}\n"
+        f"IBAN KZT: {settings.executor_bank_iban}\n"
         f"Kaspi: {settings.executor_kaspi_number} ({settings.executor_kaspi_receiver})\n\n"
         f"Следующий номер договора: <b>{next_number}</b>\n\n"
-        "Изменение реквизитов ИП выполняется через переменные окружения (.env) супер-"
-        "администратором и требует перезапуска бота."
+        "Изменение реквизитов Исполнителя выполняется через переменные окружения (.env) "
+        "супер-администратором и требует перезапуска бота."
     )
     keyboard = _settings_keyboard() if role == "superadmin" else None
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
@@ -85,7 +97,12 @@ async def receive_next_number_reason(message: Message, state: FSMContext, db_use
     reason = message.text.strip()
 
     async with session_scope() as session:
-        await set_next_contract_number(session, next_number, reason, changed_by_user_id=db_user.id)
+        await set_next_contract_number(
+            session,
+            next_number,
+            reason,
+            changed_by_user_id=db_user.id,
+        )
         await log_action(
             session,
             action="contract_counter_changed",

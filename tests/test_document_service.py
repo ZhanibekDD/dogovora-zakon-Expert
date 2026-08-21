@@ -24,7 +24,7 @@ def _sample_context(**overrides) -> ContractRenderContext:
         amount_digits="120 000 тенге",
         amount_words="сто двадцать тысяч тенге",
         payment_terms="Оплата производится в день подписания договора.",
-        work_period="в разумный срок",
+        work_period="до 30 календарных дней",
         penalty_clause="Пеня 0,1% в день.",
         executor_name="ТОО «ZakonExpert»",
         executor_full_name="Товарищество с ограниченной ответственностью «ZakonExpert»",
@@ -35,7 +35,16 @@ def _sample_context(**overrides) -> ContractRenderContext:
         executor_signer_short_name="Кияшев Ж.Д.",
         executor_phone="+7 705 876 27 95",
         executor_address="г. Талдыкорган, ул. Акын Сара, 152",
-        executor_payment_details="банковским переводом",
+        executor_website="zakonexpertt.kz",
+        executor_payment_details="по реквизитам раздела 9",
+        executor_bank_beneficiary="Жанибек Кияшев Даулетович",
+        executor_bank_beneficiary_identifier="000725500183",
+        executor_bank_name="АО «Фридом Банк Казахстан»",
+        executor_bank_bic="KSNVKZKA",
+        executor_bank_iban="KZ95551V600001202152",
+        executor_bank_payment_purpose="Оплата по договору № 42",
+        executor_kaspi_number="+7 705 876 27 95",
+        executor_kaspi_receiver="Кияшев Жанибек Даулетович",
     )
     base.update(overrides)
     return ContractRenderContext(**base)
@@ -61,14 +70,17 @@ def test_render_draft_docx_contains_client_data(tmp_path: Path) -> None:
     assert "СЕЙТЖАНОВ АЙБЕК НҰРЛАНҰЛЫ" in full_text
     assert "010312500019" in full_text
     assert "120 000 тенге" in full_text
-    assert "{{" not in full_text  # no unrendered Jinja placeholders remain
+    assert "KZ95551V600001202152" in full_text
+    assert "+7 705 876 27 95" in full_text
+    assert "{{" not in full_text
 
 
 def test_client_signature_is_always_blank_regardless_of_input(tmp_path: Path) -> None:
-    """Security invariant: even if a caller tried to smuggle a client signature value into
-    the render context, document_service must never place it in the DOCX."""
     output_path = tmp_path / "draft_with_attempted_signature.docx"
-    context = _sample_context(client_signature="SHOULD_NEVER_APPEAR", client_signature_date="01.01.2026")
+    context = _sample_context(
+        client_signature="SHOULD_NEVER_APPEAR",
+        client_signature_date="01.01.2026",
+    )
 
     settings = get_settings()
     document_service.render_contract_docx(
@@ -105,8 +117,8 @@ def test_executor_signature_block_embedded_only_when_requested(tmp_path: Path) -
 
     with_sig_images = len(DocxReader(str(with_sig_path)).inline_shapes)
     without_sig_images = len(DocxReader(str(without_sig_path)).inline_shapes)
-    assert with_sig_images == 1  # one fixed signature + seal composition
+    assert with_sig_images == 1
     assert without_sig_images == 0
 
     widths_mm = sorted(shape.width / 36000 for shape in DocxReader(str(with_sig_path)).inline_shapes)
-    assert any(abs(width - 82) < 0.5 for width in widths_mm)
+    assert any(abs(width - 80) < 0.5 for width in widths_mm)

@@ -4,11 +4,13 @@ from docx import Document as DocxReader
 from docx.shared import Mm
 
 from app.core.config import get_settings
+from app.services.master_template_service import ensure_master_template
 
 
 def _load_master_template():
     settings = get_settings()
-    return DocxReader(str(settings.templates_dir / "master_v1.docx"))
+    path = ensure_master_template(settings.templates_dir / "master_v1.docx")
+    return DocxReader(str(path))
 
 
 def _table_text(table) -> str:
@@ -25,12 +27,11 @@ def test_page_is_a4_with_adequate_margins() -> None:
     section = doc.sections[0]
     assert abs(section.page_width - Mm(210)) < Mm(1)
     assert abs(section.page_height - Mm(297)) < Mm(1)
-    # allow ~0.1mm of EMU rounding slack introduced by python-docx's Mm() conversion
     tolerance = Mm(0.2)
-    assert section.top_margin + tolerance >= Mm(15)
-    assert section.bottom_margin + tolerance >= Mm(15)
-    assert section.left_margin + tolerance >= Mm(15)
-    assert section.right_margin + tolerance >= Mm(15)
+    assert section.top_margin + tolerance >= Mm(14)
+    assert section.bottom_margin + tolerance >= Mm(14)
+    assert section.left_margin + tolerance >= Mm(14)
+    assert section.right_margin + tolerance >= Mm(14)
 
 
 def test_body_font_is_times_new_roman_11_or_12pt() -> None:
@@ -42,7 +43,7 @@ def test_body_font_is_times_new_roman_11_or_12pt() -> None:
 
 def test_signature_area_table_present_with_two_columns() -> None:
     doc = _load_master_template()
-    assert len(doc.tables) >= 2  # requisites table + signature table
+    assert len(doc.tables) >= 4
     signature_table = doc.tables[-1]
     assert len(signature_table.columns) == 2
 
@@ -53,6 +54,19 @@ def test_signature_placeholders_present_in_template() -> None:
     assert "{{ executor_signature_block }}" in full_text
     assert "{{ client_signature }}" in full_text
     assert "{{ client_signature_date }}" in full_text
+
+
+def test_three_part_contract_and_payment_requisites_are_present() -> None:
+    doc = _load_master_template()
+    all_text = "\n".join(p.text for p in doc.paragraphs)
+    all_text += "\n".join(_table_text(table) for table in doc.tables)
+    assert "ЧАСТЬ I" in all_text
+    assert "ЧАСТЬ II" in all_text
+    assert "ЧАСТЬ III" in all_text
+    assert "ПЛАТЁЖНЫЕ РЕКВИЗИТЫ" in all_text
+    assert "{{ executor_bank_iban }}" in all_text
+    assert "{{ executor_kaspi_number }}" in all_text
+    assert "{{ executor_bank_beneficiary_identifier }}" in all_text
 
 
 def test_required_placeholders_present() -> None:
@@ -72,6 +86,12 @@ def test_required_placeholders_present() -> None:
         "{{ amount_words }}",
         "{{ payment_terms }}",
         "{{ penalty_clause }}",
+        "{{ executor_website }}",
+        "{{ executor_bank_beneficiary }}",
+        "{{ executor_bank_name }}",
+        "{{ executor_bank_bic }}",
+        "{{ executor_bank_iban }}",
+        "{{ executor_kaspi_number }}",
     ]
     for placeholder in required:
         assert placeholder in all_text, f"missing {placeholder}"

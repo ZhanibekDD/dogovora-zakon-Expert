@@ -65,6 +65,13 @@ def _resize_to_width(image: Image.Image, width_px: int, *, max_height_px: int) -
     return image.resize(size, Image.Resampling.LANCZOS)
 
 
+def _set_opacity(image: Image.Image, opacity: float) -> Image.Image:
+    image = image.copy()
+    alpha = image.getchannel("A")
+    image.putalpha(alpha.point(lambda value: round(value * opacity)))
+    return image
+
+
 def compose_executor_mark(
     *,
     signature_png_bytes: bytes,
@@ -74,62 +81,72 @@ def compose_executor_mark(
     stamp_diameter_mm: float,
     block_width_mm: float,
 ) -> PreparedExecutorMark:
-    """Build one print-stable executor mark instead of two unrelated inline images.
+    """Build one print-stable signature/seal composition for the executor.
 
-    The signature crosses the signing line and the round seal partially overlaps its
-    right-hand side, matching how a real paper contract is normally signed and stamped.
-    Every coordinate is derived from millimetres at 300 DPI, so Word cannot rearrange the
-    signature and seal independently.
+    The mark deliberately looks like a paper signing act rather than two pasted images:
+    the signature crosses the signing line, the seal is slightly rotated and overlaps the
+    right-hand side of the signature, and the printed signer name stays clear below.
+    Everything is composed at 300 DPI and inserted into Word as one image, so Word or
+    LibreOffice cannot independently move/scale the signature and seal.
     """
 
-    block_height_mm = max(44.0, stamp_diameter_mm + 6.0)
+    block_height_mm = 38.0
     width_px = _mm_to_px(block_width_mm)
     height_px = _mm_to_px(block_height_mm)
     canvas = Image.new("RGBA", (width_px, height_px), (255, 255, 255, 0))
 
     signature = Image.open(io.BytesIO(signature_png_bytes)).convert("RGBA")
     stamp = Image.open(io.BytesIO(stamp_png_bytes)).convert("RGBA")
+
     signature = _resize_to_width(
         signature,
         _mm_to_px(signature_width_mm),
-        max_height_px=_mm_to_px(21),
-    )
-    stamp = stamp.resize(
-        (_mm_to_px(stamp_diameter_mm), _mm_to_px(stamp_diameter_mm)),
-        Image.Resampling.LANCZOS,
+        max_height_px=_mm_to_px(18.5),
+    ).rotate(-0.8, resample=Image.Resampling.BICUBIC, expand=True)
+
+    stamp_side = _mm_to_px(stamp_diameter_mm)
+    stamp = stamp.resize((stamp_side, stamp_side), Image.Resampling.LANCZOS)
+    stamp = _set_opacity(stamp, 0.90).rotate(
+        -2.0,
+        resample=Image.Resampling.BICUBIC,
+        expand=True,
     )
 
-    baseline_y = height_px - _mm_to_px(5)
     draw = ImageDraw.Draw(canvas)
-    line_start_x = _mm_to_px(3)
-    line_end_x = _mm_to_px(38)
-    line_width = max(2, _mm_to_px(0.25))
+    baseline_y = _mm_to_px(23.5)
+    line_start_x = _mm_to_px(2.5)
+    line_end_x = _mm_to_px(33.0)
+    line_width = max(2, _mm_to_px(0.22))
     draw.line(
         (line_start_x, baseline_y, line_end_x, baseline_y),
-        fill=(30, 30, 30, 255),
+        fill=(28, 28, 28, 255),
         width=line_width,
     )
+
+    # Make the lower signature strokes cross the real signing line by ~1.4 mm.
+    signature_x = _mm_to_px(1.2)
+    signature_y = baseline_y + _mm_to_px(1.4) - signature.height
+    canvas.alpha_composite(signature, (signature_x, max(0, signature_y)))
+
+    # The seal overlaps the right side of the signature/line but remains clear of the name row.
+    stamp_x = min(width_px - stamp.width, _mm_to_px(34.0))
+    stamp_y = _mm_to_px(0.8)
+    canvas.alpha_composite(stamp, (max(0, stamp_x), stamp_y))
+
     draw.text(
-        (_mm_to_px(39), baseline_y),
+        (_mm_to_px(2.8), _mm_to_px(35.6)),
         f"/ {signer_short_name} /",
-        font=_signer_font(9.5),
-        fill=(30, 30, 30, 255),
+        font=_signer_font(8.6),
+        fill=(28, 28, 28, 255),
         anchor="ls",
     )
-
-    # The signature must cross the line (as it would on paper) but its own stroke bounding
-    # box - which can extend well past the visible ink toward the bottom-right on a wide,
-    # looping scrawl - must never reach as far down as the printed name row below the line,
-    # or the two visually collide. Anchor the signature a fixed gap above the baseline
-    # instead of deriving it from a ratio of the signature's own height.
-    signature_x = _mm_to_px(2)
-    gap_above_baseline_px = _mm_to_px(3)
-    signature_y = max(0, baseline_y - gap_above_baseline_px - signature.height)
-    canvas.alpha_composite(signature, (signature_x, signature_y))
-
-    stamp_x = width_px - stamp.width - _mm_to_px(6)
-    stamp_y = _mm_to_px(2)
-    canvas.alpha_composite(stamp, (stamp_x, stamp_y))
+    draw.text(
+        (_mm_to_px(50.0), _mm_to_px(36.8)),
+        "М.П.",
+        font=_signer_font(7.2),
+        fill=(95, 107, 118, 255),
+        anchor="ms",
+    )
 
     output = io.BytesIO()
     canvas.save(output, format="PNG", optimize=True, dpi=(MARK_DPI, MARK_DPI))
@@ -240,16 +257,14 @@ def _visible_alpha(image: Image.Image) -> Image.Image:
     source_alpha = rgba.getchannel("A")
     # Telegram/scan tools frequently turn transparency into a white canvas. Treat only
     # near-white pixels as empty; blue seal ink and dark signature strokes stay opaque.
-    near_white = ImageOps.grayscale(rgba.convert("RGB")).point(lambda value: 0 if value >= 246 else 255)
+    near_white = ImageOps.grayscale(rgba.convert("RGB")).point(
+        lambda value: 0 if value >= 246 else 255
+    )
     return ImageChops.multiply(source_alpha, near_white)
 
 
 def prepare_signature_asset(data: bytes, *, kind: AssetKind) -> PreparedSignatureAsset:
-    """Validate, crop and normalise an uploaded executor signature/seal PNG.
-
-    The output has a tight transparent canvas and a stable aspect ratio. The DOCX renderer
-    then assigns its physical millimetre size, so a 300 px and a 3000 px upload print equally.
-    """
+    """Validate, crop and normalise an uploaded executor signature/seal PNG."""
 
     try:
         with Image.open(io.BytesIO(data)) as opened:
