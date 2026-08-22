@@ -7,12 +7,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.database.models.client import Client
 from app.database.models.contract import Contract
 from app.database.session import get_session
 from app.services import audit_service, signing_service
-from app.services.contract_service import now_almaty
+from app.services.contract_service import normalize_work_period, now_almaty
 from app.utils.masking import mask_iin, mask_phone
 
 router = APIRouter()
@@ -46,10 +45,19 @@ def _contract_summary(contract: Contract) -> dict[str, str]:
         "amount": _format_amount(contract.amount),
         "payment": PAYMENT_LABELS.get(contract.payment_type, "По условиям договора"),
         "period": str(
-            data.get("work_period")
-            or "До 30 календарных дней для действий Исполнителя; ожидание ответов третьих лиц не включается"
+            (data.get("signing_snapshot") or {}).get("work_period")
+            or normalize_work_period(data.get("work_period"))
         ),
     }
+
+
+def _payment_requisites(contract: Contract) -> dict[str, str] | None:
+    snapshot = (contract.service_data or {}).get("signing_snapshot") or {}
+    requisites = snapshot.get("payment_requisites") or {}
+    required = ("recipient", "bank_name", "kaspi_number")
+    if not all(requisites.get(key) for key in required):
+        return None
+    return {key: str(requisites[key]) for key in required}
 
 
 @router.get("/sign/{contract_id}", response_class=HTMLResponse)
@@ -80,8 +88,6 @@ async def show_signing_page(
 
     client = await session.get(Client, contract.client_id)
     assert client is not None, "contract.client_id must reference an existing client"
-    settings = get_settings()
-
     await audit_service.log_action(
         session,
         action="signing_page_opened",
@@ -105,9 +111,7 @@ async def show_signing_page(
             "summary": _contract_summary(contract),
             "feedback_reasons": signing_service.SIGNING_FEEDBACK_REASONS,
             "preview_url": f"/sign/{contract.id}/preview?token={token}",
-            "payment_recipient": settings.executor_bank_beneficiary,
-            "bank_name": settings.executor_bank_name,
-            "kaspi_number": settings.executor_kaspi_number,
+            "payment_requisites": _payment_requisites(contract),
         },
     )
 
@@ -142,6 +146,7 @@ async def preview_contract_pdf(
         contract.pdf_path,
         filename=f"dogovor_{contract.contract_number}.pdf",
         media_type="application/pdf",
+        content_disposition_type="inline",
     )
 
 
