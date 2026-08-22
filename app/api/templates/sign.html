@@ -81,9 +81,11 @@
       <span><strong>Телефон:</strong> {{ client_phone_masked }}</span>
     </div>
     <a class="primary-link" href="{{ preview_url }}" target="_blank" rel="noopener">Открыть полный договор PDF</a>
+    {% if payment_requisites %}
     <div class="payment-note">
-      <strong>Проверка оплаты:</strong> банковский получатель — {{ payment_recipient }}, банк — {{ bank_name }}; Kaspi — {{ kaspi_number }}. Переводите деньги только по реквизитам, указанным в самом договоре.
+      <strong>Проверка оплаты:</strong> банковский получатель — {{ payment_requisites.recipient }}, банк — {{ payment_requisites.bank_name }}; Kaspi — {{ payment_requisites.kaspi_number }}. Переводите деньги только по реквизитам, указанным в самом договоре.
     </div>
+    {% endif %}
   </div>
 
   <div class="card">
