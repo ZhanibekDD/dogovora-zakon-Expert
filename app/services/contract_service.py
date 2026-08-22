@@ -24,6 +24,8 @@ from app.utils.amount_words import amount_to_words_kzt, format_amount_digits
 
 logger = get_logger(__name__)
 
+DEFAULT_WORK_PERIOD = "до 30 календарных дней с даты получения полного комплекта документов и оплаты"
+
 PAYMENT_TERMS_TEXT = {
     PaymentType.PREPAYMENT: "Оплата производится в день подписания договора до начала оказания услуг.",
     PaymentType.AFTER_RESULT: (
@@ -42,6 +44,10 @@ def now_almaty() -> datetime.datetime:
     settings = get_settings()
     tz = pytz.timezone(settings.timezone)
     return datetime.datetime.now(tz)
+
+
+def normalize_work_period(work_period: str | None) -> str:
+    return work_period or DEFAULT_WORK_PERIOD
 
 
 def build_payment_terms(conditions: ContractConditions) -> str:
@@ -186,10 +192,7 @@ def _build_render_context(
         amount_digits=f"{format_amount_digits(amount)} тенге",
         amount_words=amount_to_words_kzt(amount),
         payment_terms=build_payment_terms(conditions),
-        work_period=(
-            conditions.work_period
-            or "до 30 календарных дней с даты получения полного комплекта документов и оплаты"
-        ),
+        work_period=normalize_work_period(conditions.work_period),
         penalty_clause=DEFAULT_PENALTY_CLAUSE,
         executor_name=settings.executor_display_name,
         executor_full_name=settings.executor_full_name,
