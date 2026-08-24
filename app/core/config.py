@@ -57,6 +57,7 @@ class Settings(BaseSettings):
         default="Республика Казахстан, область Жетісу, г. Талдыкорган, ул. Акын Сара, 152",
         alias="EXECUTOR_ADDRESS",
     )
+    # Main number for correspondence, negotiations and client support.
     executor_phone: str = Field(default="+7 700 309 7566", alias="EXECUTOR_PHONE")
     executor_website: str = Field(default="zakonexpertt.kz", alias="EXECUTOR_WEBSITE")
 
@@ -77,13 +78,14 @@ class Settings(BaseSettings):
         default="Оплата по договору оказания услуг", alias="EXECUTOR_BANK_PAYMENT_PURPOSE"
     )
 
-    # Kaspi remains intentionally separate from the public company contact number.
+    # Kaspi number is payment-only and must never replace the public company contact number.
     executor_kaspi_number: str = Field(default="+7 705 876 27 95", alias="EXECUTOR_KASPI_NUMBER")
-    executor_kaspi_receiver: str = Field(
-        default="Кияшев Жанибек Даулетович", alias="EXECUTOR_KASPI_RECEIVER"
-    )
+    executor_kaspi_receiver: str = Field(default="Жанибек К.", alias="EXECUTOR_KASPI_RECEIVER")
     executor_payment_details: str = Field(
-        default="по счёту или платёжной ссылке, письменно подтверждённой Исполнителем",
+        default=(
+            "по счёту или платёжной ссылке ZakonExpert, а по согласованию с Исполнителем — "
+            "переводом через Kaspi по номеру +7 705 876 27 95"
+        ),
         alias="EXECUTOR_PAYMENT_DETAILS",
     )
 

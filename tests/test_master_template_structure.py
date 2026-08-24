@@ -4,7 +4,7 @@ from docx import Document as DocxReader
 from docx.shared import Mm
 
 from app.core.config import get_settings
-from app.services.master_template_light_service import SCHEMA_MARKER, ensure_master_template
+from app.services.master_template_payment_service import SCHEMA_MARKER, ensure_master_template
 
 
 def _load_master_template():
@@ -51,15 +51,13 @@ def test_official_brand_schema_and_branding_are_present() -> None:
     doc = _load_master_template()
     all_text = _all_text(doc)
     assert doc.core_properties.subject == SCHEMA_MARKER
-    assert "v5 official-brand" in SCHEMA_MARKER
+    assert "v6 flexible-payment" in SCHEMA_MARKER
     assert "ИНДИВИДУАЛЬНЫЙ ДОГОВОР" in all_text
     assert "КЛЮЧЕВЫЕ УСЛОВИЯ" in all_text
-    assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" in all_text
     assert "+7 700 309 7566" in all_text
     assert "{{ executor_phone }}" not in all_text
 
     header = doc.sections[0].header
-    # The supplied official ZakonExpert logo is embedded as an image in the header.
     image_parts = [part for part in header.part.related_parts.values() if part.content_type.startswith("image/")]
     assert image_parts
 
@@ -79,7 +77,7 @@ def test_signature_placeholders_present_in_template() -> None:
     assert "{{ client_signature_date }}" in full_text
 
 
-def test_three_part_contract_and_safe_payment_flow_are_present() -> None:
+def test_three_part_contract_and_flexible_payment_flow_are_present() -> None:
     doc = _load_master_template()
     all_text = _all_text(doc)
     assert "ЧАСТЬ I" in all_text
@@ -87,7 +85,11 @@ def test_three_part_contract_and_safe_payment_flow_are_present() -> None:
     assert "ЧАСТЬ III" in all_text
     assert "ПОРЯДОК ОПЛАТЫ" in all_text
     assert "Оплата по счёту или платёжной ссылке" in all_text
-    assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" in all_text
+    assert "ЧЕРЕЗ KASPI" in all_text
+    assert "+7 705 876 27 95" in all_text
+    assert "Жанибек К." in all_text
+    assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" not in all_text
+    assert "SMS-коды" not in all_text
     assert "{{ executor_bank_beneficiary }}" not in all_text
     assert "{{ executor_bank_beneficiary_identifier }}" not in all_text
     assert "{{ executor_bank_iban }}" not in all_text
