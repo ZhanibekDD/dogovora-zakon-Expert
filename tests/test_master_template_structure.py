@@ -4,7 +4,7 @@ from docx import Document as DocxReader
 from docx.shared import Mm
 
 from app.core.config import get_settings
-from app.services.master_template_service import SCHEMA_MARKER, ensure_master_template
+from app.services.master_template_light_service import SCHEMA_MARKER, ensure_master_template
 
 
 def _load_master_template():
@@ -47,14 +47,13 @@ def test_body_font_is_times_new_roman_11_or_12pt() -> None:
     assert normal_style.font.size.pt in (11, 12)
 
 
-def test_premium_v3_schema_and_branding_are_present() -> None:
+def test_light_trust_schema_and_branding_are_present() -> None:
     doc = _load_master_template()
     all_text = _all_text(doc)
     assert doc.core_properties.subject == SCHEMA_MARKER
-    assert "v3 premium" in SCHEMA_MARKER
+    assert "v4 light-trust" in SCHEMA_MARKER
     assert "ИНДИВИДУАЛЬНЫЙ ДОГОВОР" in all_text
     assert "КЛЮЧЕВЫЕ УСЛОВИЯ" in all_text
-    assert "что получает Клиент" in all_text
     assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" in all_text
 
 
@@ -73,16 +72,20 @@ def test_signature_placeholders_present_in_template() -> None:
     assert "{{ client_signature_date }}" in full_text
 
 
-def test_three_part_contract_and_payment_requisites_are_present() -> None:
+def test_three_part_contract_and_safe_payment_flow_are_present() -> None:
     doc = _load_master_template()
     all_text = _all_text(doc)
     assert "ЧАСТЬ I" in all_text
     assert "ЧАСТЬ II" in all_text
     assert "ЧАСТЬ III" in all_text
-    assert "ПЛАТЁЖНЫЕ РЕКВИЗИТЫ" in all_text
-    assert "{{ executor_bank_iban }}" in all_text
-    assert "{{ executor_kaspi_number }}" in all_text
-    assert "{{ executor_bank_beneficiary_identifier }}" in all_text
+    assert "ПОРЯДОК ОПЛАТЫ" in all_text
+    assert "Оплата по счёту или платёжной ссылке" in all_text
+    assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" in all_text
+    # Personal/other beneficiary banking data must not be printed as official TOO requisites.
+    assert "{{ executor_bank_beneficiary }}" not in all_text
+    assert "{{ executor_bank_beneficiary_identifier }}" not in all_text
+    assert "{{ executor_bank_iban }}" not in all_text
+    assert "{{ executor_bank_bic }}" not in all_text
 
 
 def test_required_placeholders_present() -> None:
@@ -102,11 +105,6 @@ def test_required_placeholders_present() -> None:
         "{{ payment_terms }}",
         "{{ penalty_clause }}",
         "{{ executor_website }}",
-        "{{ executor_bank_beneficiary }}",
-        "{{ executor_bank_name }}",
-        "{{ executor_bank_bic }}",
-        "{{ executor_bank_iban }}",
-        "{{ executor_kaspi_number }}",
     ]
     for placeholder in required:
         assert placeholder in all_text, f"missing {placeholder}"
