@@ -49,14 +49,14 @@ def test_executor_mark_has_compact_fixed_a4_geometry() -> None:
         signature_png_bytes=signature.png_bytes,
         stamp_png_bytes=stamp.png_bytes,
         signer_short_name="Кияшев Ж.Д.",
-        signature_width_mm=47,
-        stamp_diameter_mm=31.5,
-        block_width_mm=80,
+        signature_width_mm=42,
+        stamp_diameter_mm=28,
+        block_width_mm=70,
     )
 
     image = Image.open(io.BytesIO(mark.png_bytes)).convert("RGBA")
-    assert mark.width_mm == 80
-    assert mark.height_mm == 38
+    assert mark.width_mm == 70
+    assert mark.height_mm == 33
     assert image.width > image.height
     assert image.getchannel("A").getbbox() is not None
 
