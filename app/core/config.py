@@ -57,7 +57,7 @@ class Settings(BaseSettings):
         default="Республика Казахстан, область Жетісу, г. Талдыкорган, ул. Акын Сара, 152",
         alias="EXECUTOR_ADDRESS",
     )
-    executor_phone: str = Field(default="+7 705 876 27 95", alias="EXECUTOR_PHONE")
+    executor_phone: str = Field(default="+7 700 309 7566", alias="EXECUTOR_PHONE")
     executor_website: str = Field(default="zakonexpertt.kz", alias="EXECUTOR_WEBSITE")
 
     executor_bank_beneficiary: str = Field(
@@ -77,6 +77,7 @@ class Settings(BaseSettings):
         default="Оплата по договору оказания услуг", alias="EXECUTOR_BANK_PAYMENT_PURPOSE"
     )
 
+    # Kaspi remains intentionally separate from the public company contact number.
     executor_kaspi_number: str = Field(default="+7 705 876 27 95", alias="EXECUTOR_KASPI_NUMBER")
     executor_kaspi_receiver: str = Field(
         default="Кияшев Жанибек Даулетович", alias="EXECUTOR_KASPI_RECEIVER"
@@ -86,23 +87,23 @@ class Settings(BaseSettings):
         alias="EXECUTOR_PAYMENT_DETAILS",
     )
 
-    # Compact paper-like proportions: the mark must support the document, not dominate it.
+    # Extra safe margins keep the signature/seal entirely inside the executor column.
     executor_signature_width_mm: float = Field(
-        default=42.0,
+        default=38.0,
         alias="EXECUTOR_SIGNATURE_WIDTH_MM",
         ge=28,
         le=55,
     )
     executor_stamp_diameter_mm: float = Field(
-        default=28.0,
+        default=24.0,
         alias="EXECUTOR_STAMP_DIAMETER_MM",
-        ge=24,
+        ge=22,
         le=36,
     )
     executor_signature_block_width_mm: float = Field(
-        default=70.0,
+        default=64.0,
         alias="EXECUTOR_SIGNATURE_BLOCK_WIDTH_MM",
-        ge=64,
+        ge=60,
         le=78,
     )
     contract_number_start: int = Field(default=1, alias="CONTRACT_NUMBER_START")

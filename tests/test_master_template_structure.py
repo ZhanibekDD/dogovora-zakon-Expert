@@ -47,14 +47,21 @@ def test_body_font_is_times_new_roman_11_or_12pt() -> None:
     assert normal_style.font.size.pt in (11, 12)
 
 
-def test_light_trust_schema_and_branding_are_present() -> None:
+def test_official_brand_schema_and_branding_are_present() -> None:
     doc = _load_master_template()
     all_text = _all_text(doc)
     assert doc.core_properties.subject == SCHEMA_MARKER
-    assert "v4 light-trust" in SCHEMA_MARKER
+    assert "v5 official-brand" in SCHEMA_MARKER
     assert "ИНДИВИДУАЛЬНЫЙ ДОГОВОР" in all_text
     assert "КЛЮЧЕВЫЕ УСЛОВИЯ" in all_text
     assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" in all_text
+    assert "+7 700 309 7566" in all_text
+    assert "{{ executor_phone }}" not in all_text
+
+    header = doc.sections[0].header
+    # The supplied official ZakonExpert logo is embedded as an image in the header.
+    image_parts = [part for part in header.part.related_parts.values() if part.content_type.startswith("image/")]
+    assert image_parts
 
 
 def test_signature_area_table_present_with_two_columns() -> None:
@@ -81,7 +88,6 @@ def test_three_part_contract_and_safe_payment_flow_are_present() -> None:
     assert "ПОРЯДОК ОПЛАТЫ" in all_text
     assert "Оплата по счёту или платёжной ссылке" in all_text
     assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" in all_text
-    # Personal/other beneficiary banking data must not be printed as official TOO requisites.
     assert "{{ executor_bank_beneficiary }}" not in all_text
     assert "{{ executor_bank_beneficiary_identifier }}" not in all_text
     assert "{{ executor_bank_iban }}" not in all_text
