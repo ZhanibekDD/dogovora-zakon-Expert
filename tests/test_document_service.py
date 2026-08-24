@@ -125,4 +125,5 @@ def test_executor_signature_block_embedded_only_when_requested(tmp_path: Path) -
     assert without_sig_images == 0
 
     widths_mm = sorted(shape.width / 36000 for shape in DocxReader(str(with_sig_path)).inline_shapes)
-    assert any(abs(width - 80) < 0.5 for width in widths_mm)
+    expected_width = settings.executor_signature_block_width_mm
+    assert any(abs(width - expected_width) < 0.5 for width in widths_mm)
