@@ -8,7 +8,7 @@ from docxtpl import DocxTemplate, InlineImage
 
 from app.core.config import get_settings
 from app.schemas.contract import ContractRenderContext
-from app.services.master_template_light_service import ensure_master_template
+from app.services.master_template_payment_service import ensure_master_template
 from app.services.signature_asset_service import (
     SignatureAssetError,
     compose_executor_mark,
