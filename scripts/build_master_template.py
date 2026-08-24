@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.services.master_template_light_service import build_master_template  # noqa: E402
+from app.services.master_template_payment_service import build_master_template  # noqa: E402
 
 OUTPUT_PATH = ROOT / "app" / "templates" / "contracts" / "master_v1.docx"
 
