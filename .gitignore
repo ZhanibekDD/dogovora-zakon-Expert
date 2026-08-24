@@ -27,5 +27,7 @@ Key
 *.jpeg
 *.jpg
 *.png
+# Official brand asset shipped with the app (not client PII) - keep it tracked despite *.png above.
+!app/templates/assets/brand/*.png
 Возражение образцы/
 zakonexpert_bot.egg-info/

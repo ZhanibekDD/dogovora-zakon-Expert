@@ -51,7 +51,7 @@ def test_official_brand_schema_and_branding_are_present() -> None:
     doc = _load_master_template()
     all_text = _all_text(doc)
     assert doc.core_properties.subject == SCHEMA_MARKER
-    assert "v6 flexible-payment" in SCHEMA_MARKER
+    assert SCHEMA_MARKER.startswith("ZakonExpert contract schema v")
     assert "ИНДИВИДУАЛЬНЫЙ ДОГОВОР" in all_text
     assert "КЛЮЧЕВЫЕ УСЛОВИЯ" in all_text
     assert "+7 700 309 7566" in all_text

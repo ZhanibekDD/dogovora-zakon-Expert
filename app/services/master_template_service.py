@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import tempfile
 from pathlib import Path
 
@@ -10,7 +9,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor, Twips
-from PIL import Image, ImageDraw, ImageFont
 
 SCHEMA_MARKER = "ZakonExpert contract schema v3 premium"
 FONT = "Times New Roman"
@@ -185,32 +183,6 @@ def _field(paragraph, instruction: str) -> None:
     _font(run, size=7.1, color=MUTED, family=UI_FONT)
 
 
-def _brand_mark() -> io.BytesIO:
-    size = 560
-    image = Image.new("RGBA", (size, size), (255, 255, 255, 0))
-    draw = ImageDraw.Draw(image)
-    navy = (16, 42, 67, 255)
-    navy2 = (23, 58, 94, 255)
-    gold = (181, 138, 58, 255)
-    draw.ellipse((26, 26, size - 26, size - 26), outline=navy, width=18)
-    draw.ellipse((50, 50, size - 50, size - 50), outline=gold, width=7)
-    shield = [(180, 147), (280, 102), (380, 147), (360, 340), (280, 425), (200, 340)]
-    draw.polygon(shield, fill=navy2)
-    draw.line(shield + [shield[0]], fill=gold, width=8, joint="curve")
-    font: ImageFont.FreeTypeFont | ImageFont.ImageFont
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf", 84)
-    except OSError:
-        font = ImageFont.load_default()
-    bbox = draw.textbbox((0, 0), "ZE", font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(((size - tw) / 2, 242 - th / 2), "ZE", font=font, fill=(255, 255, 255, 255))
-    draw.line((162, 466, 398, 466), fill=gold, width=6)
-    draw.ellipse((272, 456, 288, 472), fill=gold)
-    out = io.BytesIO()
-    image.save(out, "PNG", optimize=True)
-    out.seek(0)
-    return out
 
 
 def _set_defaults(doc) -> None:
@@ -245,7 +217,10 @@ def _header_footer(doc) -> None:
         _cell_margins(cell, top=0, start=0, bottom=0, end=0)
     mark, brand, ref = table.rows[0].cells
     mark.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
-    mark.paragraphs[0].add_run().add_picture(_brand_mark(), width=Mm(10.5))
+    # Left intentionally blank here: this is only ever an intermediate build stage - the
+    # light-brand post-processor (master_template_light_service) always merges this cell
+    # with `brand` and embeds the real ZakonExpert logo asset before a document is saved,
+    # or the whole build fails loudly if that asset is missing. No placeholder icon needed.
     bp = brand.paragraphs[0]
     bp.paragraph_format.space_after = Pt(0)
     _font(bp.add_run("ZAKONEXPERT\n"), size=9.1, bold=True, color=NAVY, family=UI_FONT)

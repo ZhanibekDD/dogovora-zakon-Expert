@@ -8,6 +8,7 @@ from docxtpl import DocxTemplate, InlineImage
 
 from app.core.config import get_settings
 from app.schemas.contract import ContractRenderContext
+from app.services.master_template_light_service import BrandAssetMissingError
 from app.services.master_template_payment_service import ensure_master_template
 from app.services.signature_asset_service import (
     SignatureAssetError,
@@ -29,7 +30,14 @@ def render_contract_docx(
     include_executor_signature: bool,
 ) -> Path:
     settings = get_settings()
-    ensure_master_template(template_docx_path)
+    try:
+        ensure_master_template(template_docx_path)
+    except BrandAssetMissingError as exc:
+        raise ExecutorAssetsMissingError(
+            "Не удалось собрать шаблон договора: отсутствует официальный логотип "
+            "ZakonExpert (app/templates/assets/brand/zakonexpert-logo.png). "
+            "Договор не формируется, пока файл не будет восстановлен."
+        ) from exc
     doc = DocxTemplate(str(template_docx_path))
 
     data = context.model_dump()

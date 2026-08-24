@@ -89,10 +89,15 @@ def compose_executor_mark(
     inserted into Word as one transparent image so Word/LibreOffice cannot rearrange it.
     """
 
-    block_height_mm = 33.0
+    # Hard safe-margin: after every resize/rotation, no stamp (or signature) pixel may end up
+    # closer than this to any edge of the composed block. Rotation with expand=True grows the
+    # bounding box, so this is computed from the image's *actual* post-rotation size, not the
+    # nominal configured diameter/width.
+    SAFE_MARGIN_MM = 1.8
+    safe_margin_px = _mm_to_px(SAFE_MARGIN_MM)
+    text_row_mm = 12.5  # reserved strip at the bottom for the signing line + printed name
+
     width_px = _mm_to_px(block_width_mm)
-    height_px = _mm_to_px(block_height_mm)
-    canvas = Image.new("RGBA", (width_px, height_px), (255, 255, 255, 0))
 
     signature = Image.open(io.BytesIO(signature_png_bytes)).convert("RGBA")
     stamp = Image.open(io.BytesIO(stamp_png_bytes)).convert("RGBA")
@@ -111,8 +116,27 @@ def compose_executor_mark(
         expand=True,
     )
 
+    # The block must be tall enough that the (post-rotation) stamp fits with its full safe
+    # margin above and below, whatever diameter was configured - a fixed canvas height here
+    # regressed to visibly clipping the seal once EXECUTOR_STAMP_DIAMETER_MM was allowed up to
+    # 36mm. Growing the container is the correct fix, not silently shrinking the stamp.
+    #
+    # The seal is deliberately allowed to visually overlap the bottom text row (real stamped
+    # documents commonly show a seal crossing the signing line) - only the stamp's own
+    # top/bottom safe margins determine whether the canvas needs to grow, not an extra
+    # strip reserved on top of the text row. This keeps the historical 33mm baseline (and
+    # therefore the existing layout) unchanged for every stamp size that already fit safely.
+    stamp_area_mm = 2 * SAFE_MARGIN_MM + stamp.height / MARK_DPI * 25.4
+    block_height_mm = max(33.0, stamp_area_mm)
+    height_px = _mm_to_px(block_height_mm)
+    canvas = Image.new("RGBA", (width_px, height_px), (255, 255, 255, 0))
+
+    # Original fixed-height layout put the line 12.5mm above the bottom edge and the printed
+    # name 2.4mm above it (in the 33mm baseline canvas) - keep those same bottom-relative
+    # offsets so growing the canvas for a larger stamp only adds room above, not stretching
+    # the line/name spacing.
     draw = ImageDraw.Draw(canvas)
-    baseline_y = _mm_to_px(20.5)
+    baseline_y = height_px - _mm_to_px(text_row_mm)
     line_start_x = _mm_to_px(2.3)
     line_end_x = _mm_to_px(29.0)
     line_width = max(2, _mm_to_px(0.18))
@@ -125,15 +149,18 @@ def compose_executor_mark(
     # A slight crossing of the line is enough to look hand-signed without obscuring the seal.
     signature_x = _mm_to_px(1.0)
     signature_y = baseline_y + _mm_to_px(1.0) - signature.height
-    canvas.alpha_composite(signature, (signature_x, max(0, signature_y)))
+    signature_y = max(safe_margin_px, signature_y)
+    canvas.alpha_composite(signature, (signature_x, signature_y))
 
-    # Keep the seal compact and slightly over the right tail of the signature.
-    stamp_x = min(width_px - stamp.width, _mm_to_px(29.2))
-    stamp_y = _mm_to_px(0.6)
-    canvas.alpha_composite(stamp, (max(0, stamp_x), stamp_y))
+    # Keep the seal compact and slightly over the right tail of the signature, but never
+    # closer than the safe margin to any edge - clamp on both axes independently.
+    stamp_x = min(_mm_to_px(29.2), width_px - stamp.width - safe_margin_px)
+    stamp_x = max(safe_margin_px, stamp_x)
+    stamp_y = safe_margin_px
+    canvas.alpha_composite(stamp, (stamp_x, stamp_y))
 
     draw.text(
-        (_mm_to_px(2.5), _mm_to_px(30.6)),
+        (_mm_to_px(2.5), height_px - _mm_to_px(2.4)),
         f"/ {signer_short_name} /",
         font=_signer_font(8.2),
         fill=(45, 45, 45, 255),

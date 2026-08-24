@@ -9,7 +9,7 @@ from docx.shared import RGBColor
 
 from app.services.master_template_light_service import build_master_template as build_v5_template
 
-SCHEMA_MARKER = "ZakonExpert contract schema v6 flexible-payment"
+SCHEMA_MARKER = "ZakonExpert contract schema v8 real-logo-safe-margin"
 NAVY = "20364F"
 GOLD = "B78A43"
 PALE_GOLD = "FBF8F1"
