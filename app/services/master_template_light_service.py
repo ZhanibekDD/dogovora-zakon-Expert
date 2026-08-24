@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import io
 from pathlib import Path
 
@@ -9,8 +10,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, RGBColor
+from PIL import Image
 
+from app.core.logging import get_logger
 from app.services.master_template_service import build_master_template as build_v3_template
+
+logger = get_logger(__name__)
 
 SCHEMA_MARKER = "ZakonExpert contract schema v5 official-brand"
 NAVY = "20364F"
@@ -95,7 +100,17 @@ def _replace_text(doc, old: str, new: str) -> None:
 
 
 def _replace_header_branding(doc) -> None:
-    logo_bytes = base64.b64decode(OFFICIAL_LOGO_PNG_B64)
+    # A decorative header logo must never be able to block document generation entirely - if
+    # the embedded asset is missing or corrupted, skip the swap and leave the template's
+    # existing text-based header branding untouched rather than raising.
+    try:
+        logo_bytes = base64.b64decode(OFFICIAL_LOGO_PNG_B64, validate=True)
+        with Image.open(io.BytesIO(logo_bytes)) as probe:
+            probe.load()
+    except (binascii.Error, OSError):
+        logger.warning("header_logo_asset_corrupted")
+        return
+
     for section in doc.sections:
         header = section.header
         if not header.tables:
