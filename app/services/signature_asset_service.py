@@ -81,16 +81,15 @@ def compose_executor_mark(
     stamp_diameter_mm: float,
     block_width_mm: float,
 ) -> PreparedExecutorMark:
-    """Build one print-stable signature/seal composition for the executor.
+    """Build a compact paper-like signature/seal composition for the executor.
 
-    The mark deliberately looks like a paper signing act rather than two pasted images:
-    the signature crosses the signing line, the seal is slightly rotated and overlaps the
-    right-hand side of the signature, and the printed signer name stays clear below.
-    Everything is composed at 300 DPI and inserted into Word as one image, so Word or
-    LibreOffice cannot independently move/scale the signature and seal.
+    The goal is restrained realism: the handwritten signature lightly crosses the signing
+    line, the seal is smaller and slightly rotated with reduced opacity, and the printed
+    signer name stays visually separate below. The whole mark is composed at 300 DPI and
+    inserted into Word as one transparent image so Word/LibreOffice cannot rearrange it.
     """
 
-    block_height_mm = 38.0
+    block_height_mm = 33.0
     width_px = _mm_to_px(block_width_mm)
     height_px = _mm_to_px(block_height_mm)
     canvas = Image.new("RGBA", (width_px, height_px), (255, 255, 255, 0))
@@ -101,51 +100,44 @@ def compose_executor_mark(
     signature = _resize_to_width(
         signature,
         _mm_to_px(signature_width_mm),
-        max_height_px=_mm_to_px(18.5),
-    ).rotate(-0.8, resample=Image.Resampling.BICUBIC, expand=True)
+        max_height_px=_mm_to_px(15.8),
+    ).rotate(-0.7, resample=Image.Resampling.BICUBIC, expand=True)
 
     stamp_side = _mm_to_px(stamp_diameter_mm)
     stamp = stamp.resize((stamp_side, stamp_side), Image.Resampling.LANCZOS)
-    stamp = _set_opacity(stamp, 0.90).rotate(
-        -2.0,
+    stamp = _set_opacity(stamp, 0.84).rotate(
+        -1.5,
         resample=Image.Resampling.BICUBIC,
         expand=True,
     )
 
     draw = ImageDraw.Draw(canvas)
-    baseline_y = _mm_to_px(23.5)
-    line_start_x = _mm_to_px(2.5)
-    line_end_x = _mm_to_px(33.0)
-    line_width = max(2, _mm_to_px(0.22))
+    baseline_y = _mm_to_px(20.5)
+    line_start_x = _mm_to_px(2.3)
+    line_end_x = _mm_to_px(29.0)
+    line_width = max(2, _mm_to_px(0.18))
     draw.line(
         (line_start_x, baseline_y, line_end_x, baseline_y),
-        fill=(28, 28, 28, 255),
+        fill=(80, 80, 80, 210),
         width=line_width,
     )
 
-    # Make the lower signature strokes cross the real signing line by ~1.4 mm.
-    signature_x = _mm_to_px(1.2)
-    signature_y = baseline_y + _mm_to_px(1.4) - signature.height
+    # A slight crossing of the line is enough to look hand-signed without obscuring the seal.
+    signature_x = _mm_to_px(1.0)
+    signature_y = baseline_y + _mm_to_px(1.0) - signature.height
     canvas.alpha_composite(signature, (signature_x, max(0, signature_y)))
 
-    # The seal overlaps the right side of the signature/line but remains clear of the name row.
-    stamp_x = min(width_px - stamp.width, _mm_to_px(34.0))
-    stamp_y = _mm_to_px(0.8)
+    # Keep the seal compact and slightly over the right tail of the signature.
+    stamp_x = min(width_px - stamp.width, _mm_to_px(29.2))
+    stamp_y = _mm_to_px(0.6)
     canvas.alpha_composite(stamp, (max(0, stamp_x), stamp_y))
 
     draw.text(
-        (_mm_to_px(2.8), _mm_to_px(35.6)),
+        (_mm_to_px(2.5), _mm_to_px(30.6)),
         f"/ {signer_short_name} /",
-        font=_signer_font(8.6),
-        fill=(28, 28, 28, 255),
+        font=_signer_font(8.2),
+        fill=(45, 45, 45, 255),
         anchor="ls",
-    )
-    draw.text(
-        (_mm_to_px(50.0), _mm_to_px(36.8)),
-        "М.П.",
-        font=_signer_font(7.2),
-        fill=(95, 107, 118, 255),
-        anchor="ms",
     )
 
     output = io.BytesIO()
@@ -255,8 +247,6 @@ def validate_executor_asset_binding(
 def _visible_alpha(image: Image.Image) -> Image.Image:
     rgba = image.convert("RGBA")
     source_alpha = rgba.getchannel("A")
-    # Telegram/scan tools frequently turn transparency into a white canvas. Treat only
-    # near-white pixels as empty; blue seal ink and dark signature strokes stay opaque.
     near_white = ImageOps.grayscale(rgba.convert("RGB")).point(
         lambda value: 0 if value >= 246 else 255
     )
