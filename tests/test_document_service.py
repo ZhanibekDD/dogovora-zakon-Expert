@@ -33,7 +33,7 @@ def _sample_context(**overrides) -> ContractRenderContext:
         executor_identifier="260740044168",
         executor_director_name="Кияшев Жанибек Даулетович",
         executor_signer_short_name="Кияшев Ж.Д.",
-        executor_phone="+7 705 876 27 95",
+        executor_phone="+7 700 309 7566",
         executor_address="г. Талдыкорган, ул. Акын Сара, 152",
         executor_website="zakonexpertt.kz",
         executor_payment_details="по реквизитам раздела 9",
@@ -44,7 +44,7 @@ def _sample_context(**overrides) -> ContractRenderContext:
         executor_bank_iban="KZ95551V600001202152",
         executor_bank_payment_purpose="Оплата по договору № 42",
         executor_kaspi_number="+7 705 876 27 95",
-        executor_kaspi_receiver="Кияшев Жанибек Даулетович",
+        executor_kaspi_receiver="Жанибек К.",
     )
     base.update(overrides)
     return ContractRenderContext(**base)
@@ -70,12 +70,14 @@ def test_render_draft_docx_contains_client_data(tmp_path: Path) -> None:
     assert "СЕЙТЖАНОВ АЙБЕК НҰРЛАНҰЛЫ" in full_text
     assert "010312500019" in full_text
     assert "120 000 тенге" in full_text
-    # The light-trust template deliberately does not print raw bank IBAN/beneficiary details
-    # in the document body (see master_template_light_service._rewrite_payment_table) - payment
-    # goes through an invoice/payment link instead, referencing only phone/website.
+    # Raw bank beneficiary/IBAN is not printed as company requisites. The contract offers
+    # invoice/payment-link payment and, if more convenient, a separate Kaspi payment option.
     assert "KZ95551V600001202152" not in full_text
     assert "zakonexpertt.kz" in full_text
+    assert "+7 700 309 7566" in full_text
     assert "+7 705 876 27 95" in full_text
+    assert "Жанибек К." in full_text
+    assert "БЕЗОПАСНОСТЬ ОПЛАТЫ" not in full_text
     assert "{{" not in full_text
 
 
