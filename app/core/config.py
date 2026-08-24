@@ -60,8 +60,6 @@ class Settings(BaseSettings):
     executor_phone: str = Field(default="+7 705 876 27 95", alias="EXECUTOR_PHONE")
     executor_website: str = Field(default="zakonexpertt.kz", alias="EXECUTOR_WEBSITE")
 
-    # The bank beneficiary is deliberately stored separately from the legal executor.
-    # This prevents the contract from falsely presenting a personal/IE account as a TOO account.
     executor_bank_beneficiary: str = Field(
         default="Жанибек Кияшев Даулетович", alias="EXECUTOR_BANK_BENEFICIARY"
     )
@@ -84,29 +82,28 @@ class Settings(BaseSettings):
         default="Кияшев Жанибек Даулетович", alias="EXECUTOR_KASPI_RECEIVER"
     )
     executor_payment_details: str = Field(
-        default=(
-            "по банковским реквизитам и/или Kaspi, указанным в разделе 9 настоящего договора"
-        ),
+        default="по счёту или платёжной ссылке, письменно подтверждённой Исполнителем",
         alias="EXECUTOR_PAYMENT_DETAILS",
     )
 
+    # Compact paper-like proportions: the mark must support the document, not dominate it.
     executor_signature_width_mm: float = Field(
-        default=47.0,
+        default=42.0,
         alias="EXECUTOR_SIGNATURE_WIDTH_MM",
-        ge=30,
-        le=60,
+        ge=28,
+        le=55,
     )
     executor_stamp_diameter_mm: float = Field(
-        default=31.5,
+        default=28.0,
         alias="EXECUTOR_STAMP_DIAMETER_MM",
-        ge=28,
-        le=38,
+        ge=24,
+        le=36,
     )
     executor_signature_block_width_mm: float = Field(
-        default=80.0,
+        default=70.0,
         alias="EXECUTOR_SIGNATURE_BLOCK_WIDTH_MM",
-        ge=74,
-        le=84,
+        ge=64,
+        le=78,
     )
     contract_number_start: int = Field(default=1, alias="CONTRACT_NUMBER_START")
 
@@ -129,12 +126,10 @@ class Settings(BaseSettings):
 
     @property
     def objection_allowed_ids(self) -> set[int]:
-        """Telegram IDs allowed to use the 'Сформировать возражение' feature."""
         return self._parse_ids(self.objection_allowed_telegram_ids)
 
     @property
     def executor_iin(self) -> str:
-        """Backward-compatible alias for deployments still referencing the old IP field."""
         return self.executor_identifier
 
     @staticmethod
