@@ -70,7 +70,11 @@ def test_render_draft_docx_contains_client_data(tmp_path: Path) -> None:
     assert "СЕЙТЖАНОВ АЙБЕК НҰРЛАНҰЛЫ" in full_text
     assert "010312500019" in full_text
     assert "120 000 тенге" in full_text
-    assert "KZ95551V600001202152" in full_text
+    # The light-trust template deliberately does not print raw bank IBAN/beneficiary details
+    # in the document body (see master_template_light_service._rewrite_payment_table) - payment
+    # goes through an invoice/payment link instead, referencing only phone/website.
+    assert "KZ95551V600001202152" not in full_text
+    assert "zakonexpertt.kz" in full_text
     assert "+7 705 876 27 95" in full_text
     assert "{{" not in full_text
 

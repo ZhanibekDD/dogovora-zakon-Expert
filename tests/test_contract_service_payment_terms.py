@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from app.schemas.conditions import ContractConditions
-from app.services.contract_service import DEFAULT_WORK_PERIOD, build_payment_terms, normalize_work_period
+from app.services.contract_service import (
+    DEFAULT_WORK_PERIOD,
+    build_payment_terms,
+    normalize_work_period,
+)
 
 
 def test_after_result_payment_points_to_result_clause() -> None:

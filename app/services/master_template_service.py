@@ -197,6 +197,7 @@ def _brand_mark() -> io.BytesIO:
     shield = [(180, 147), (280, 102), (380, 147), (360, 340), (280, 425), (200, 340)]
     draw.polygon(shield, fill=navy2)
     draw.line(shield + [shield[0]], fill=gold, width=8, joint="curve")
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf", 84)
     except OSError:
@@ -669,7 +670,7 @@ def build_master_template(output_path: Path) -> Path:
     with tempfile.NamedTemporaryFile(prefix="master_v3_", suffix=".docx", dir=output_path.parent, delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
-        doc.save(tmp_path)
+        doc.save(str(tmp_path))
         tmp_path.replace(output_path)
     finally:
         tmp_path.unlink(missing_ok=True)
