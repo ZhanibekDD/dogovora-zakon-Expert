@@ -5,14 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Договор подписан — ZakonExpert</title>
 <style>
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 480px; margin: 60px auto; padding: 0 16px; text-align: center; color: #1c1c1e; }
-  .check { font-size: 48px; }
+  :root { --ink:#171717; --muted:#667085; --gold:#b58a3a; --line:#e4e7ec; --bg:#f5f6f8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); }
+  .wrap { max-width:520px; margin:0 auto; padding:52px 16px; text-align:center; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:28px 22px; box-shadow:0 8px 28px rgba(16,24,40,.05); }
+  .check { width:56px; height:56px; border-radius:50%; margin:0 auto 14px; display:grid; place-items:center; background:#f3f8f4; font-size:30px; }
+  h1 { font-size:23px; margin:0 0 10px; }
+  p { color:var(--muted); line-height:1.5; font-size:14px; }
+  a { display:block; margin-top:18px; padding:13px 16px; border-radius:11px; background:var(--ink); color:#fff; text-decoration:none; font-weight:750; }
+  .brand { margin-top:18px; color:var(--gold); font-size:12px; font-weight:750; letter-spacing:.05em; }
 </style>
 </head>
 <body>
-  <div class="check">✅</div>
-  <h1>Договор № {{ contract_number }} подписан</h1>
-  <p>Дата и время подписания: {{ signed_at }} (Asia/Almaty)</p>
-  <p>Подписанный PDF-файл направлен вам и администратору в Telegram.</p>
+  <div class="wrap">
+    <div class="card">
+      <div class="check">✓</div>
+      <h1>Договор № {{ contract_number }} подписан</h1>
+      <p>Дата и время подписания: {{ signed_at }} (Asia/Almaty). Подписанный PDF сохранён в системе.</p>
+      <a href="{{ download_url }}">Скачать подписанный PDF</a>
+      <div class="brand">ZAKONEXPERT</div>
+    </div>
+  </div>
 </body>
 </html>

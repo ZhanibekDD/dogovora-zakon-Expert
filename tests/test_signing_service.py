@@ -75,7 +75,7 @@ async def test_signing_token_is_valid_and_hash_only_stored(db_session: AsyncSess
 
     result = await db_session.execute(select(SigningToken).where(SigningToken.contract_id == contract.id))
     stored = result.scalar_one()
-    assert stored.token_hash != raw_token  # raw token is never persisted
+    assert stored.token_hash != raw_token
 
     token = await signing_service.resolve_signing_token(db_session, contract.id, raw_token)
     assert token.id == stored.id
@@ -175,8 +175,13 @@ async def test_document_hash_recorded_after_signing(db_session: AsyncSession, tm
     assert client_signature.original_pdf_sha256 != client_signature.signed_pdf_sha256
     assert contract.status == "signed"
     assert contract.document_sha256 == client_signature.signed_pdf_sha256
-
-    # naive TIMESTAMP WITHOUT TIME ZONE columns - see the regression note in
-    # test_quick_contract_service.py::test_generate_contract_immediately_produces_final_signed_document
     assert contract.signed_at.tzinfo is None
     assert client_signature.signed_at.tzinfo is None
+
+
+def test_feedback_reasons_are_whitelisted() -> None:
+    code, label = signing_service.normalize_feedback_reason("payment_requisites")
+    assert code == "payment_requisites"
+    assert "реквизит" in label.lower()
+    with pytest.raises(signing_service.SigningError):
+        signing_service.normalize_feedback_reason("arbitrary-free-text")

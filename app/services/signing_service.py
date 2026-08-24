@@ -17,6 +17,15 @@ from app.services import pdf_service
 from app.services.contract_service import now_almaty
 from app.services.storage_service import contract_dir
 
+SIGNING_FEEDBACK_REASONS: dict[str, str] = {
+    "price": "Стоимость выше ожиданий",
+    "result": "Неясно, какой результат я получу",
+    "deadline": "Не устраивает или непонятен срок",
+    "payment_requisites": "Есть сомнения по реквизитам оплаты",
+    "need_time": "Нужно время на решение",
+    "other": "Другая причина",
+}
+
 
 class SigningError(Exception):
     pass
@@ -42,9 +51,16 @@ def get_consent_text() -> str:
     return CLIENT_CONSENT_TEXT
 
 
+def normalize_feedback_reason(reason: str) -> tuple[str, str]:
+    code = (reason or "").strip().lower()
+    label = SIGNING_FEEDBACK_REASONS.get(code)
+    if label is None:
+        raise SigningError("Неизвестная причина")
+    return code, label
+
+
 async def create_signing_token(session: AsyncSession, contract: Contract, created_by_id: int) -> str:
-    """Create a one-time signing link token. Only the SHA-256 hash is stored; the raw token
-    is returned exactly once and must be embedded in the link sent to the client."""
+    """Create a one-time signing link token. Only the SHA-256 hash is stored."""
     settings = get_settings()
     raw_token, token_hash = generate_token()
     expires_at = now_almaty() + datetime.timedelta(hours=settings.signing_token_ttl_hours)
@@ -75,7 +91,8 @@ async def resolve_signing_token(
     token_hash = hash_token(raw_token)
     result = await session.execute(
         select(SigningToken).where(
-            SigningToken.contract_id == contract_id, SigningToken.token_hash == token_hash
+            SigningToken.contract_id == contract_id,
+            SigningToken.token_hash == token_hash,
         )
     )
     token = result.scalar_one_or_none()
@@ -119,10 +136,7 @@ async def complete_signing(
     ip_address: str | None,
     user_agent: str | None,
 ) -> ClientSignature:
-    """Finalize the client's simple electronic signature act. This is the ONLY code path in the
-    entire system that is allowed to produce a signed contract - it requires an unexpired,
-    unused, non-revoked token plus an explicit consent checkbox plus a non-blank hand-drawn
-    signature image, exactly as required by the project's client-signature security rules."""
+    """Finalize the client's simple electronic signature act."""
     if not consent_accepted:
         raise SigningError("Требуется согласие с условиями договора")
     if token.used_at is not None:

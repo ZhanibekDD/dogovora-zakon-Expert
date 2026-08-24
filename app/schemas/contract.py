@@ -34,7 +34,17 @@ class ContractRenderContext(BaseModel):
     executor_signer_short_name: str
     executor_phone: str
     executor_address: str
+    executor_website: str
     executor_payment_details: str
+
+    executor_bank_beneficiary: str
+    executor_bank_beneficiary_identifier: str
+    executor_bank_name: str
+    executor_bank_bic: str
+    executor_bank_iban: str
+    executor_bank_payment_purpose: str
+    executor_kaspi_number: str
+    executor_kaspi_receiver: str
 
     executor_signature: str | None = None
     executor_stamp: str | None = None

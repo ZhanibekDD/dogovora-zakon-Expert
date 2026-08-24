@@ -8,6 +8,7 @@ from docxtpl import DocxTemplate, InlineImage
 
 from app.core.config import get_settings
 from app.schemas.contract import ContractRenderContext
+from app.services.master_template_light_service import ensure_master_template
 from app.services.signature_asset_service import (
     SignatureAssetError,
     compose_executor_mark,
@@ -27,15 +28,8 @@ def render_contract_docx(
     output_path: Path,
     include_executor_signature: bool,
 ) -> Path:
-    """Render the master docxtpl template into a concrete contract DOCX.
-
-    Security invariant: client_signature / client_signature_date are ALWAYS rendered blank
-    here, regardless of what the caller passes in `context`. The client's simple electronic
-    signature is only ever composited onto the already-finalized PDF by signing_service,
-    after the client's own explicit action - never via a docxtpl merge field. This keeps
-    "no automatic client signature" enforced at the rendering layer, not just by convention.
-    """
     settings = get_settings()
+    ensure_master_template(template_docx_path)
     doc = DocxTemplate(str(template_docx_path))
 
     data = context.model_dump()
@@ -77,8 +71,6 @@ def render_contract_docx(
             stamp_diameter_mm=settings.executor_stamp_diameter_mm,
             block_width_mm=settings.executor_signature_block_width_mm,
         )
-        # Word receives a single transparent block with geometry already fixed in millimetres.
-        # It can no longer separate, stack or independently scale the signature and seal.
         mark_stream = io.BytesIO(mark.png_bytes)
         data["executor_signature_block"] = InlineImage(
             doc,

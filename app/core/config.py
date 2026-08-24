@@ -54,37 +54,58 @@ class Settings(BaseSettings):
         alias="EXECUTOR_SIGNER_SHORT_NAME",
     )
     executor_address: str = Field(
-        default="Республика Казахстан, г. Талдыкорган, ул. Акын Сара, 152",
+        default="Республика Казахстан, область Жетісу, г. Талдыкорган, ул. Акын Сара, 152",
         alias="EXECUTOR_ADDRESS",
     )
     executor_phone: str = Field(default="+7 705 876 27 95", alias="EXECUTOR_PHONE")
+    executor_website: str = Field(default="zakonexpertt.kz", alias="EXECUTOR_WEBSITE")
+
+    # The bank beneficiary is deliberately stored separately from the legal executor.
+    # This prevents the contract from falsely presenting a personal/IE account as a TOO account.
+    executor_bank_beneficiary: str = Field(
+        default="Жанибек Кияшев Даулетович", alias="EXECUTOR_BANK_BENEFICIARY"
+    )
+    executor_bank_beneficiary_identifier: str = Field(
+        default="000725500183", alias="EXECUTOR_BANK_BENEFICIARY_IDENTIFIER"
+    )
+    executor_bank_name: str = Field(
+        default="АО «Фридом Банк Казахстан»", alias="EXECUTOR_BANK_NAME"
+    )
+    executor_bank_bic: str = Field(default="KSNVKZKA", alias="EXECUTOR_BANK_BIC")
+    executor_bank_iban: str = Field(
+        default="KZ95551V600001202152", alias="EXECUTOR_BANK_IBAN"
+    )
+    executor_bank_payment_purpose: str = Field(
+        default="Оплата по договору оказания услуг", alias="EXECUTOR_BANK_PAYMENT_PURPOSE"
+    )
+
     executor_kaspi_number: str = Field(default="+7 705 876 27 95", alias="EXECUTOR_KASPI_NUMBER")
     executor_kaspi_receiver: str = Field(
         default="Кияшев Жанибек Даулетович", alias="EXECUTOR_KASPI_RECEIVER"
     )
     executor_payment_details: str = Field(
         default=(
-            "банковским переводом на расчётный счёт Исполнителя либо иным согласованным "
-            "Сторонами способом"
+            "по банковским реквизитам и/или Kaspi, указанным в разделе 9 настоящего договора"
         ),
         alias="EXECUTOR_PAYMENT_DETAILS",
     )
+
     executor_signature_width_mm: float = Field(
-        default=48.0,
+        default=47.0,
         alias="EXECUTOR_SIGNATURE_WIDTH_MM",
         ge=30,
-        le=65,
+        le=60,
     )
     executor_stamp_diameter_mm: float = Field(
-        default=36.0,
+        default=31.5,
         alias="EXECUTOR_STAMP_DIAMETER_MM",
-        ge=30,
-        le=42,
+        ge=28,
+        le=38,
     )
     executor_signature_block_width_mm: float = Field(
-        default=82.0,
+        default=80.0,
         alias="EXECUTOR_SIGNATURE_BLOCK_WIDTH_MM",
-        ge=70,
+        ge=74,
         le=84,
     )
     contract_number_start: int = Field(default=1, alias="CONTRACT_NUMBER_START")
@@ -108,9 +129,7 @@ class Settings(BaseSettings):
 
     @property
     def objection_allowed_ids(self) -> set[int]:
-        """Telegram IDs allowed to use the 'Сформировать возражение' feature. This is a
-        separate, narrower allow-list from the general open-access contract flow - by
-        explicit request, objection generation stays restricted to specific people."""
+        """Telegram IDs allowed to use the 'Сформировать возражение' feature."""
         return self._parse_ids(self.objection_allowed_telegram_ids)
 
     @property
