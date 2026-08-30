@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.database.models.user import Employee, Role, User
 from app.database.session import session_scope
+from app.services.crm_backfill_service import backfill_existing_contracts_once
 from app.services.crm_pull_worker import run_crm_pull_worker
 
 logger = get_logger(__name__)
@@ -120,19 +121,24 @@ async def main() -> None:
 
     await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in BOT_COMMANDS])
 
-    # CRM contract creation is independent from Telegram transport. The same long-running
-    # process polls the private CRM queue outbound over HTTPS; no public generator port is
-    # required. If CRM_SYNC_URL / CRM_INTEGRATION_KEY are not configured, this task exits
-    # immediately and Telegram behavior stays unchanged.
+    # Both tasks use outbound HTTPS only. The pull worker serves new CRM requests; the
+    # backfill projects contracts that existed before CRM integration and then writes a
+    # persistent marker in STORAGE_PATH so later restarts do not resend the whole archive.
     crm_pull_task = asyncio.create_task(run_crm_pull_worker(), name="crm-pull-worker")
+    crm_backfill_task = asyncio.create_task(
+        backfill_existing_contracts_once(),
+        name="crm-historical-backfill",
+    )
     logger.info("bot_starting")
     try:
         await dispatcher.start_polling(bot)
     finally:
-        if not crm_pull_task.done():
-            crm_pull_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await crm_pull_task
+        for task in (crm_pull_task, crm_backfill_task):
+            if not task.done():
+                task.cancel()
+        for task in (crm_pull_task, crm_backfill_task):
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 if __name__ == "__main__":
