@@ -5,16 +5,20 @@ on:
     paths:
       - 'app/api/routes/crm_bridge.py'
       - 'app/api/main.py'
+      - 'app/bot/main.py'
       - 'app/core/config.py'
       - 'app/services/contract_import_service.py'
       - 'app/services/contract_service.py'
       - 'app/services/crm_sync_service.py'
+      - 'app/services/crm_pull_worker.py'
+      - 'scripts/sync_contracts_to_crm.py'
       - 'tests/test_contract_import_service.py'
       - 'tests/test_crm_sync_service.py'
       - '.github/workflows/crm-contract-sync.yml'
   push:
     branches:
       - feature/crm-contract-sync
+      - feature/crm-pull-worker-final
 
 jobs:
   test:
@@ -28,7 +32,9 @@ jobs:
           cache: pip
       - run: python -m pip install -U pip
       - run: pip install -e '.[dev]'
+      - name: Syntax
+        run: python -m compileall -q app/services/crm_pull_worker.py app/bot/main.py scripts/sync_contracts_to_crm.py
       - name: Ruff
-        run: ruff check app/api/routes/crm_bridge.py app/core/config.py app/services/contract_import_service.py app/services/contract_service.py app/services/crm_sync_service.py tests/test_contract_import_service.py tests/test_crm_sync_service.py
+        run: ruff check app/api/routes/crm_bridge.py app/core/config.py app/services/contract_import_service.py app/services/contract_service.py app/services/crm_sync_service.py app/services/crm_pull_worker.py app/bot/main.py scripts/sync_contracts_to_crm.py tests/test_contract_import_service.py tests/test_crm_sync_service.py
       - name: Tests
         run: pytest -q tests/test_contract_import_service.py tests/test_crm_sync_service.py
