@@ -19,6 +19,7 @@ on:
     branches:
       - feature/crm-contract-sync
       - feature/crm-pull-worker-final
+      - feature/crm-import-pull-final
 
 jobs:
   test:
