@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -85,10 +86,8 @@ async def backfill_existing_contracts_once() -> dict[str, int | bool]:
             json.dumps({"version": 1, "total": total, "synced": synced}, ensure_ascii=False),
             encoding="utf-8",
         )
-        try:
+        with contextlib.suppress(OSError):
             marker.chmod(0o600)
-        except OSError:
-            pass
         logger.info("crm_historical_backfill_completed", total=total, synced=synced)
     else:
         logger.warning("crm_historical_backfill_incomplete", total=total, synced=synced, failed=failed)
