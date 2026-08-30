@@ -80,18 +80,40 @@ def _normalize_phone(value: str) -> str:
 
 
 def _generated_client_identity(text: str) -> tuple[str, str, str]:
-    # Current ZakonExpert template renders: КЛИЕНТ / ФИО / ИИН 12digits · phone.
-    match = re.search(
-        r"КЛИЕНТ\s*[|\n ]+(.{3,180}?)\s*[|\n ]+ИИН\s*[:№]?\s*(\d{12})(?:\s*[·•|]\s*(\+?7[\d\s()\-]{9,24}))?",
+    # python-docx table extraction keeps both party columns on the same row separated by |.
+    # Parse the client column explicitly so executor name/BIN can never leak into client data.
+    table_match = re.search(
+        r"ИСПОЛНИТЕЛЬ\s*\|\s*КЛИЕНТ\s*\n"
+        r"[^\n|]*\|\s*([^\n|]{3,180})\s*\n"
+        r"[^\n|]*\|\s*ИИН\s*[:№]?\s*(\d{12})"
+        r"(?:\s*[·•|]\s*(\+?7[\d\s()\-]{9,24}))?",
         text,
-        re.IGNORECASE | re.DOTALL,
+        re.IGNORECASE,
     )
-    if not match:
-        return "", "", ""
-    name = _clean(match.group(1))
-    # Keep the regex from swallowing a table label from the preceding cell.
-    name = re.sub(r"^(?:ИСПОЛНИТЕЛЬ|КЛИЕНТ)\s+", "", name, flags=re.IGNORECASE)
-    return name[:255], match.group(2), _normalize_phone(match.group(3) or "")
+    if table_match:
+        return (
+            _clean(table_match.group(1))[:255],
+            table_match.group(2),
+            _normalize_phone(table_match.group(3) or ""),
+        )
+
+    # Requisites/signature section in the current template is stacked vertically.
+    stacked_match = re.search(
+        r"(?:^|\n)\s*КЛИЕНТ\s*\n\s*([^\n|]{3,180})\s*\n"
+        r"\s*ИИН\s*[:№]?\s*(\d{12})"
+        r"(?:\s*(?:\n|[·•|])\s*(?:Тел(?:ефон)?\.?/WhatsApp\s*:\s*)?"
+        r"(\+?7[\d\s()\-]{9,24}))?",
+        text,
+        re.IGNORECASE,
+    )
+    if stacked_match:
+        return (
+            _clean(stacked_match.group(1))[:255],
+            stacked_match.group(2),
+            _normalize_phone(stacked_match.group(3) or ""),
+        )
+
+    return "", "", ""
 
 
 def parse_contract_text(text: str) -> dict[str, Any]:
