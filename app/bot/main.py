@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
@@ -16,18 +17,15 @@ from app.bot.handlers import (
     signature_settings,
     start,
 )
-from app.bot.handlers import (
-    help as help_handler,
-)
-from app.bot.handlers import (
-    settings as settings_handler,
-)
+from app.bot.handlers import help as help_handler
+from app.bot.handlers import settings as settings_handler
 from app.bot.middlewares.audit import AuditMiddleware
 from app.bot.middlewares.auth import AuthMiddleware
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.database.models.user import Employee, Role, User
 from app.database.session import session_scope
+from app.services.crm_pull_worker import run_crm_pull_worker
 
 logger = get_logger(__name__)
 
@@ -60,8 +58,7 @@ async def ensure_roles_seeded(session) -> None:
 
 
 async def ensure_superadmins() -> None:
-    """Auto-provision every Telegram ID in SUPERADMIN_TELEGRAM_IDS as an active superadmin
-    employee on startup, so the very first operator never gets locked out of their own bot."""
+    """Auto-provision every Telegram ID in SUPERADMIN_TELEGRAM_IDS as an active superadmin."""
     settings = get_settings()
     async with session_scope() as session:
         await ensure_roles_seeded(session)
@@ -83,9 +80,7 @@ async def ensure_superadmins() -> None:
             elif user.role_id != superadmin_role.id:
                 user.role_id = superadmin_role.id
 
-            employee_result = await session.execute(
-                select(Employee).where(Employee.user_id == user.id)
-            )
+            employee_result = await session.execute(select(Employee).where(Employee.user_id == user.id))
             if employee_result.scalar_one_or_none() is None:
                 session.add(Employee(user_id=user.id))
 
@@ -118,14 +113,6 @@ async def main() -> None:
     settings = get_settings()
     await ensure_superadmins()
 
-    # Deliberately no bot-wide default parse_mode: plain text is the safe default. Handlers
-    # that want bold/formatted output opt in explicitly with parse_mode="HTML" and must
-    # escape any dynamic value first (see app.utils.telegram_text.escape_html) - client
-    # names, OCR'd document fields, OpenAI free text and even a user's own Telegram display
-    # name are all attacker/user-controlled and routinely contain '<'/'&'/'>'. With HTML as
-    # the *default*, any handler that forgot this would silently fail to send at all (this
-    # is exactly what broke the very first /start message and its main-menu keyboard for
-    # any user whose Telegram display name contained a special character).
     bot = Bot(token=settings.telegram_bot_token)
     dispatcher = build_dispatcher()
 
@@ -133,8 +120,19 @@ async def main() -> None:
 
     await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in BOT_COMMANDS])
 
+    # CRM contract creation is independent from Telegram transport. The same long-running
+    # process polls the private CRM queue outbound over HTTPS; no public generator port is
+    # required. If CRM_SYNC_URL / CRM_INTEGRATION_KEY are not configured, this task exits
+    # immediately and Telegram behavior stays unchanged.
+    crm_pull_task = asyncio.create_task(run_crm_pull_worker(), name="crm-pull-worker")
     logger.info("bot_starting")
-    await dispatcher.start_polling(bot)
+    try:
+        await dispatcher.start_polling(bot)
+    finally:
+        if not crm_pull_task.done():
+            crm_pull_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await crm_pull_task
 
 
 if __name__ == "__main__":
