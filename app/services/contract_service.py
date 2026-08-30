@@ -17,7 +17,7 @@ from app.database.repositories.counter_repo import reserve_next_contract_number
 from app.schemas.conditions import ContractConditions
 from app.schemas.contract import ContractRenderContext
 from app.schemas.identity import IdentityExtraction
-from app.services import document_service, pdf_service, template_service
+from app.services import crm_sync_service, document_service, pdf_service, template_service
 from app.services.openai_service import OpenAIService, OpenAIUnavailableError
 from app.services.storage_service import contract_dir
 from app.utils.amount_words import amount_to_words_kzt, format_amount_digits
@@ -257,4 +257,8 @@ async def approve_contract_documents(
         )
     )
     await session.flush()
+
+    # CRM is an external projection of the contract system. Delivery is best-effort and
+    # idempotent; a CRM outage must never block contract creation or document generation.
+    await crm_sync_service.sync_contract_to_crm(contract, client)
     return str(docx_path), str(pdf_path)
