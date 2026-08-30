@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     backup_encryption_key: str = Field(default="", alias="BACKUP_ENCRYPTION_KEY")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # CRM bridge is independent from Telegram. When CRM_SYNC_URL is configured, every
+    # finalized contract is delivered to ZakonExpert CRM using the shared integration key.
+    crm_sync_url: str = Field(default="", alias="CRM_SYNC_URL")
+    crm_integration_key: str = Field(default="", alias="CRM_INTEGRATION_KEY")
+    crm_sync_timeout_seconds: float = Field(
+        default=4.0,
+        alias="CRM_SYNC_TIMEOUT_SECONDS",
+        ge=1.0,
+        le=15.0,
+    )
+
     contract_city: str = Field(default="г. Талдыкорган", alias="CONTRACT_CITY")
     executor_full_name: str = Field(
         default="Товарищество с ограниченной ответственностью «ZakonExpert»",
