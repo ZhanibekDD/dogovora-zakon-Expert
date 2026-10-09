@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
 
     superadmin_telegram_ids: str = Field(default="", alias="SUPERADMIN_TELEGRAM_IDS")
+    # Extra employees allowed to use the bot besides superadmins. Empty = superadmins only.
+    bot_allowed_telegram_ids: str = Field(default="", alias="BOT_ALLOWED_TELEGRAM_IDS")
 
     app_base_url: str = Field(default="http://localhost:8000", alias="APP_BASE_URL")
     app_secret_key: str = Field(alias="APP_SECRET_KEY")
@@ -137,6 +139,11 @@ class Settings(BaseSettings):
     @property
     def superadmin_ids(self) -> set[int]:
         return self._parse_ids(self.superadmin_telegram_ids)
+
+    @property
+    def bot_access_ids(self) -> set[int]:
+        """Telegram IDs allowed to use the bot at all: superadmins plus the explicit allowlist."""
+        return self.superadmin_ids | self._parse_ids(self.bot_allowed_telegram_ids)
 
     @property
     def objection_allowed_ids(self) -> set[int]:
