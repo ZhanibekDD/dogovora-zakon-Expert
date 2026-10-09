@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.database.models.user import Employee, User
 from app.database.repositories.user_repo import get_role_by_code
@@ -14,18 +15,39 @@ from app.database.session import session_scope
 
 logger = get_logger(__name__)
 
-DEFAULT_AUTO_PROVISION_ROLE = "manager"
+DEFAULT_PROVISION_ROLE = "manager"
+SUPERADMIN_ROLE = "superadmin"
+
+UNAUTHORIZED_MESSAGE = (
+    "⛔ Этот бот доступен только сотрудникам ZakonExpert.\n"
+    "Ваш Telegram ID: {telegram_id}"
+)
 
 
 class AuthMiddleware(BaseMiddleware):
-    """Resolves the Telegram user against the employees table on every update.
+    """Lets only allowlisted Telegram IDs use the bot.
 
-    Open-access mode: anyone who messages the bot for the first time is auto-provisioned as
-    a `manager` (the lowest-privilege staff role) instead of being rejected, per an explicit
-    decision to open the bot to everyone. Accounts that already exist and were explicitly
-    blocked (or deactivated) via /employees_block are still refused - blocking remains
-    possible, it just no longer defaults to "deny everyone not pre-approved".
+    Closed-access mode: the allowlist is SUPERADMIN_TELEGRAM_IDS plus BOT_ALLOWED_TELEGRAM_IDS
+    (see Settings.bot_access_ids). Everyone else is refused before any database access,
+    including users that were auto-provisioned earlier under the old open-access mode.
+    An empty allowlist refuses everyone (fail closed).
+
+    Allowlisted IDs missing from the database are created on first contact: superadmin IDs
+    with the superadmin role, the rest as managers. Accounts blocked or deactivated via
+    /employees_block stay refused even when allowlisted.
     """
+
+    def __init__(self, allowed_ids: Iterable[int] | None = None) -> None:
+        self._allowed_ids = frozenset(allowed_ids) if allowed_ids is not None else None
+
+    def _allowed(self) -> frozenset[int]:
+        if self._allowed_ids is not None:
+            return self._allowed_ids
+        return frozenset(get_settings().bot_access_ids)
+
+    @staticmethod
+    def _superadmin_ids() -> set[int]:
+        return get_settings().superadmin_ids
 
     async def __call__(
         self,
@@ -44,25 +66,36 @@ class AuthMiddleware(BaseMiddleware):
         if telegram_id is None:
             return await handler(event, data)
 
+        if telegram_id not in self._allowed():
+            if isinstance(event, Message):
+                await event.answer(UNAUTHORIZED_MESSAGE.format(telegram_id=telegram_id))
+            elif isinstance(event, CallbackQuery):
+                await event.answer("⛔ Нет доступа", show_alert=True)
+            logger.warning("unauthorized_access_attempt", telegram_id=telegram_id)
+            return None
+
         async with session_scope() as session:
             result = await session.execute(select(User).where(User.telegram_id == telegram_id))
             user = result.scalar_one_or_none()
 
             if user is None:
-                manager_role = await get_role_by_code(session, DEFAULT_AUTO_PROVISION_ROLE)
+                role_code = (
+                    SUPERADMIN_ROLE if telegram_id in self._superadmin_ids() else DEFAULT_PROVISION_ROLE
+                )
+                role = await get_role_by_code(session, role_code)
                 user = User(
                     telegram_id=telegram_id,
                     username=username,
                     full_name=full_name,
-                    role_id=manager_role.id,
+                    role_id=role.id,
                     is_active=True,
                 )
                 session.add(user)
                 await session.flush()
                 session.add(Employee(user_id=user.id))
                 await session.flush()
-                role_code = manager_role.code
-                logger.info("user_auto_provisioned", telegram_id=telegram_id)
+                role_code = role.code
+                logger.info("allowlisted_user_provisioned", telegram_id=telegram_id, role=role_code)
             else:
                 employee_result = await session.execute(
                     select(Employee).where(Employee.user_id == user.id)
